@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 
 export const useLibraryStore = defineStore("library", () => {
-  const playlist = ref("default");
+  const playlist = ref("");
   const search = ref("");
   const term = ref("");
   const songId = ref<string>();
@@ -18,7 +18,7 @@ export const useLibraryStore = defineStore("library", () => {
   }
 
   function reset() {
-    selectPlaylist("default");
+    selectPlaylist("");
     songId.value = undefined;
   }
 

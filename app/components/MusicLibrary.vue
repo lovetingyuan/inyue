@@ -191,9 +191,9 @@ onBeforeUnmount(() => {
           </div>
         </form>
       </div>
-      <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-5 sm:px-6">
+      <div class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 pb-5 sm:px-6">
         <div
-          class="flex items-center gap-3 rounded-box bg-linear-to-br from-primary/17 to-base-200/55 p-3 sm:gap-4 sm:p-4"
+          class="flex shrink-0 items-center gap-3 rounded-box bg-linear-to-br from-primary/17 to-base-200/55 p-3 sm:gap-4 sm:p-4"
         >
           <MusicArtwork :src="playlistCoverUrl" class="w-14 shadow-md sm:w-20" />
           <div class="min-w-0 flex-1">
@@ -231,9 +231,16 @@ onBeforeUnmount(() => {
         <p
           v-if="loading && !songs.length"
           role="status"
-          class="flex items-center gap-2 px-2 py-6 text-sm text-base-content/65"
+          class="grid min-h-36 flex-1 place-content-center justify-items-center gap-3 py-4 text-center text-sm font-medium text-base-content/70"
         >
-          <span class="loading loading-spinner loading-xs" aria-hidden="true" /> 加载中…
+          <span
+            class="grid size-16 place-items-center rounded-full bg-radial from-primary/16 to-primary/5 text-primary ring-1 ring-primary/15"
+            aria-hidden="true"
+          >
+            <span class="loading loading-bars loading-md motion-reduce:hidden" />
+            <AudioLines class="hidden size-6 motion-reduce:block" :stroke-width="1.8" />
+          </span>
+          加载歌曲…
         </p>
         <div v-else-if="error" class="alert alert-error alert-soft mt-4" role="alert">
           {{ error }} <button class="btn btn-sm" @click="retryLibrary">重试</button>
@@ -266,7 +273,7 @@ onBeforeUnmount(() => {
             <li
               v-for="(song, index) in songs"
               :key="song.id"
-              class="flex items-center gap-1 rounded-field pl-2"
+              class="flex items-center gap-1 rounded-field"
               :class="current?.id === song.id ? 'bg-primary/8' : 'hover:bg-base-200/70'"
             >
               <button

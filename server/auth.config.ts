@@ -1,7 +1,7 @@
 import { defineServerAuth } from "@nuxtjs/better-auth/config";
 import { bearer } from "better-auth/plugins";
 import { sendAccountMail } from "./utils/account-mail";
-import { androidDevOrigin } from "~~/shared/android-dev.mjs";
+import { devOrigin } from "~~/shared/dev-server.mjs";
 
 export default defineServerAuth(() => {
   const config = useRuntimeConfig();
@@ -10,7 +10,7 @@ export default defineServerAuth(() => {
 
   return {
     trustedOrigins: import.meta.dev
-      ? [config.public.androidOrigin, androidDevOrigin]
+      ? [config.public.androidOrigin, devOrigin]
       : [config.public.androidOrigin],
     plugins: [bearer({ requireSignature: true })],
     advanced: { ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] } },

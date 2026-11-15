@@ -40,6 +40,7 @@ export interface Track {
   title: string;
   artist: string;
   album: string | null;
+  year: number | null;
   duration: number | null;
   url: string;
   coverUrl: string | null;

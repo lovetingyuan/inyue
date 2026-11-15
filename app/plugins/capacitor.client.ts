@@ -1,10 +1,16 @@
 import { Capacitor } from "@capacitor/core";
-import { SplashScreen } from "@capacitor/splash-screen";
 
 export default defineNuxtPlugin((nuxtApp) => {
-  nuxtApp.hook("app:mounted", () => {
-    if (Capacitor.isNativePlatform()) {
-      SplashScreen.hide().catch(console.error);
-    }
+  if (!Capacitor.isNativePlatform()) return;
+
+  nuxtApp.hook("app:mounted", async () => {
+    await nextTick();
+    await document
+      .querySelector<HTMLImageElement>("#startup-logo")
+      ?.decode()
+      .catch(() => {});
+    await import("@capacitor/splash-screen")
+      .then(({ SplashScreen }) => SplashScreen.hide())
+      .catch(console.error);
   });
 });

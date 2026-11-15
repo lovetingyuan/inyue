@@ -27,6 +27,30 @@
     "logs": { "invocation_logs": false },
   },
   "upload_source_maps": true,
+  "env": {
+    "production": {
+      "name": "inyue",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [{ "pattern": "inyue.tingyuan.nz", "custom_domain": true }],
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "inyue",
+          "database_id": "8ea7ad55-34f3-4ac7-a7c5-4607c2b803bb",
+          "migrations_dir": "server/database/migrations",
+        },
+      ],
+      "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "inyue" }],
+      "vars": {
+        "NUXT_PUBLIC_SITE_URL": "https://inyue.tingyuan.nz",
+        "NUXT_MAIL_FROM": "inyue@inyue.tingyuan.nz",
+      },
+      "secrets": {
+        "required": ["NUXT_BETTER_AUTH_SECRET", "NUXT_MEDIA_SIGNING_SECRET", "NUXT_RESEND_API_KEY"],
+      },
+    },
+  },
   /**
    * Smart Placement
    * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

@@ -1,135 +1,219 @@
-import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
-import concurrently from "concurrently";
-import { androidDevOrigin, androidDevPort } from "../shared/android-dev.mjs";
+import { parseArgs } from "node:util";
+import { devOrigin, devPort } from "../shared/dev-server.mjs";
 
+const require = createRequire(import.meta.url);
+const capacitor = require.resolve("@capacitor/cli/bin/capacitor");
+const windows = process.platform === "win32";
+const host = new URL(devOrigin).hostname;
+const port = String(devPort);
 const args = process.argv.slice(2);
-const targetIndex = args.indexOf("--target");
-const target =
-  targetIndex === -1
-    ? args.find((arg) => arg.startsWith("--target="))?.slice("--target=".length)
-    : args[targetIndex + 1];
-if (args.length && (!target || args.length !== (targetIndex === -1 ? 1 : 2))) {
-  throw new Error("用法：npm run android -- --target <ID>");
-}
-const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
-if (!sdk) throw new Error("请设置 ANDROID_HOME 指向 Android SDK。");
-const adb = join(sdk, "platform-tools", process.platform === "win32" ? "adb.exe" : "adb");
-const devices = execFileSync(adb, ["devices"], { encoding: "utf8" })
-  .split(/\r?\n/)
-  .map((line) => /^(\S+)\s+device$/.exec(line.trim())?.[1])
-  .filter(Boolean);
-if (devices.length === 0 || (target && !devices.includes(target))) {
-  throw new Error("未找到可用的 Android 设备。请连接并授权真机，或启动模拟器。");
-}
-if (!target && devices.length > 1) {
-  throw new Error(`检测到多个设备，请通过 --target 指定一个：${devices.join("、")}`);
-}
-const device = target || devices[0];
 
-if (process.env.INYUE_ANDROID_DEPLOY !== "1" && !hasMobileDevServer()) {
-  const { result } = concurrently(
-    [
-      { name: "nuxt", command: "npm run dev:mobile" },
-      {
-        name: "android",
-        command: "node scripts/android-dev.mjs {@}",
-        env: { INYUE_ANDROID_DEPLOY: "1" },
+try {
+  if (args.includes("--list") || args.includes("--version") || args.includes("-V")) {
+    run(process.execPath, [capacitor, "run", "android", ...args]);
+  } else if (args.includes("--help") || args.includes("-h")) {
+    console.log("用法：npm run android [-- --target <ID>]，查看设备：npm run android:devices");
+  } else {
+    const { values } = parseArgs({
+      args,
+      options: {
+        target: { type: "string" },
+        port: { type: "string", default: port },
+        forwardPorts: { type: "string", default: `${port}:${port}` },
       },
-    ],
-    { additionalArguments: args, killOthersOn: "failure" },
-  );
-  await result.catch(() => {
-    process.exitCode = 1;
-  });
-} else {
-  if (process.env.INYUE_ANDROID_DEPLOY !== "1") {
-    console.log(`复用本项目的 Nuxt 移动开发服务：${androidDevOrigin}`);
+    });
+    if (values.port !== port || values.forwardPorts !== `${port}:${port}`) {
+      throw new Error(`Android 开发端口固定为 ${port}。`);
+    }
+    await develop(values.target ?? process.env.ANDROID_SERIAL);
   }
-  await deploy();
+} catch (error) {
+  console.error(error.message);
+  process.exitCode = 1;
 }
 
-function hasMobileDevServer() {
-  // Nuxt keeps the mobile server's lock separate from the Web server's .nuxt lock.
+async function develop(target) {
+  const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
+  const adb = sdk ? join(sdk, "platform-tools", windows ? "adb.exe" : "adb") : "adb";
+  const devices = execFileSync(adb, ["devices"], { encoding: "utf8" })
+    .split(/\r?\n/)
+    .flatMap((line) => /^(\S+)\s+device$/.exec(line.trim())?.slice(1) ?? []);
+  if (devices.length === 0 || (target && !devices.includes(target))) {
+    throw new Error("未找到可用的 Android 设备。请连接并授权真机，或启动模拟器。");
+  }
+  if (devices.length > 1 && !target) {
+    throw new Error(`检测到多个设备，请用 --target 指定设备：${devices.join("、")}`);
+  }
+
+  let release = lockDeployment();
+  const shutdown = new AbortController();
+  const stop = () => shutdown.abort();
+  process.once("SIGINT", stop);
+  process.once("SIGTERM", stop);
+  let server;
+  let exited;
   try {
-    const lock = JSON.parse(readFileSync("temp/nuxt-android/nuxt.lock", "utf8"));
-    if (
-      lock.command !== "dev" ||
-      lock.cwd !== process.cwd().replaceAll("\\", "/") ||
-      lock.url !== androidDevOrigin ||
-      !Number.isInteger(lock.pid) ||
-      lock.pid <= 0
-    ) {
+    if (hasProjectServer()) {
+      console.log(`复用 Nuxt 开发服务 ${devOrigin}`);
+    } else {
+      const nuxt = join(dirname(require.resolve("nuxt/package.json")), "bin/nuxt.mjs");
+      server = spawn(
+        process.execPath,
+        [
+          nuxt,
+          "dev",
+          "--envName",
+          "capacitor",
+          "--host",
+          host,
+          "--port",
+          port,
+          "--strictPort",
+          "--no-takeover",
+          "--no-fork",
+        ],
+        { stdio: "inherit" },
+      );
+      exited = new Promise((resolve) => {
+        server.once("error", resolve);
+        server.once("exit", () => resolve(new Error(`Nuxt 开发服务已退出（${devOrigin}）。`)));
+      });
+    }
+
+    await waitForServer(server, exited, shutdown.signal);
+    await installApp(adb, target ?? devices[0], shutdown.signal);
+    release();
+    release = undefined;
+    console.log(`Web 和 Android 开发已就绪：${devOrigin}`);
+
+    if (exited) {
+      const stopped = new Promise((resolve) =>
+        shutdown.signal.addEventListener("abort", resolve, { once: true }),
+      );
+      const error = await Promise.race([exited, stopped]);
+      if (error && !shutdown.signal.aborted) throw error;
+    }
+  } catch (error) {
+    if (!shutdown.signal.aborted) throw error;
+  } finally {
+    release?.();
+    process.removeListener("SIGINT", stop);
+    process.removeListener("SIGTERM", stop);
+    if (server?.exitCode === null && server.signalCode === null) server.kill();
+  }
+}
+
+function lockDeployment() {
+  mkdirSync("temp", { recursive: true });
+  const lock = "temp/android-deploy.lock";
+  try {
+    writeFileSync(lock, String(process.pid), { flag: "wx" });
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    const owner = Number(readFileSync(lock, "utf8"));
+    if (!owner || isRunning(owner)) throw new Error("已有 Android 部署正在运行，请等它完成。");
+    rmSync(lock, { force: true });
+    writeFileSync(lock, String(process.pid), { flag: "wx" });
+  }
+  return () => rmSync(lock, { force: true });
+}
+
+function isRunning(pid) {
+  if (!Number.isSafeInteger(pid) || pid < 1) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === "EPERM";
+  }
+}
+
+function hasProjectServer(pid) {
+  return [".nuxt/nuxt.lock", "temp/nuxt-android/nuxt.lock"].some((file) => {
+    try {
+      const lock = JSON.parse(readFileSync(file, "utf8"));
+      return (
+        lock.command === "dev" &&
+        lock.url === devOrigin &&
+        resolve(lock.cwd) === process.cwd() &&
+        (pid === undefined || lock.pid === pid) &&
+        isRunning(lock.pid)
+      );
+    } catch {
       return false;
     }
-    process.kill(lock.pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
+  });
 }
 
-async function deploy() {
-  let ready = false;
-  const deadline = Date.now() + 90_000;
-  while (Date.now() < deadline) {
-    if ((await isReady("/", "text/html")) && (await isReady("/_nuxt/@vite/client", "javascript"))) {
-      ready = true;
-      break;
-    }
-    await setTimeout(500);
-  }
-  if (!ready) throw new Error(`Nuxt 开发服务未就绪：${androidDevOrigin}`);
-
-  async function isReady(path, contentType) {
-    const response = await fetch(`${androidDevOrigin}${path}`, {
-      signal: AbortSignal.timeout(3_000),
-    }).catch(() => undefined);
-    await response?.body?.cancel();
-    return response?.ok && response.headers.get("content-type")?.includes(contentType);
-  }
-
-  // Keep the ADB mapping active after deployment for both HTTP and Vite HMR.
-  const port = `tcp:${androidDevPort}`;
-  execFileSync(adb, ["-s", device, "reverse", port, port], { stdio: "inherit" });
-  const require = createRequire(import.meta.url);
-  const configPath = "android/app/src/main/assets/capacitor.config.json";
-  const previousConfig = existsSync(configPath) ? readFileSync(configPath) : undefined;
+async function waitForServer(server, exited, signal) {
+  const timeout = AbortSignal.timeout(90_000);
+  const startup = new AbortController();
+  exited?.then((error) => {
+    startup.abort(error);
+  });
+  const waiting = AbortSignal.any([signal, timeout, startup.signal]);
   try {
-    execFileSync(
-      process.execPath,
-      [require.resolve("@capacitor/cli/bin/capacitor"), "sync", "android"],
-      {
-        stdio: "inherit",
-        env: { ...process.env, INYUE_ANDROID_DEV: "1" },
-      },
-    );
-    if (process.platform === "win32") {
-      execFileSync("cmd.exe", ["/d", "/c", "gradlew.bat", "assembleDebug"], {
-        cwd: "android",
-        stdio: "inherit",
-      });
-    } else {
-      execFileSync("./gradlew", ["assembleDebug"], { cwd: "android", stdio: "inherit" });
+    while (!waiting.aborted) {
+      if (hasProjectServer(server?.pid) && (await nuxtResponds(waiting))) return;
+      await setTimeout(400, undefined, { signal: waiting });
     }
+  } catch (error) {
+    if (!waiting.aborted) throw error;
+  }
+  startup.signal.throwIfAborted();
+  signal.throwIfAborted();
+  throw new Error(`Nuxt 开发服务未在 ${devOrigin} 就绪。`);
+}
+
+async function nuxtResponds(signal) {
+  const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(3_000)]);
+  const checks = await Promise.all(
+    [
+      ["/", "text/html"],
+      ["/_nuxt/@vite/client", "javascript"],
+    ].map(async ([path, type]) => {
+      const response = await fetch(new URL(path, devOrigin), {
+        method: "HEAD",
+        redirect: "error",
+        signal: requestSignal,
+      }).catch(() => null);
+      return response?.ok && response.headers.get("content-type")?.includes(type);
+    }),
+  );
+  return checks.every(Boolean);
+}
+
+async function installApp(adb, device, signal) {
+  const configPath = "android/app/src/main/assets/capacitor.config.json";
+  const original = existsSync(configPath) ? readFileSync(configPath) : undefined;
+  try {
+    run(process.execPath, [capacitor, "sync", "android"], {
+      env: { ...process.env, INYUE_ANDROID_DEV: "1" },
+    });
+    if (windows)
+      run(process.env.ComSpec ?? "cmd.exe", ["/d", "/c", "gradlew.bat", "assembleDebug"], {
+        cwd: "android",
+      });
+    else run("./gradlew", ["assembleDebug"], { cwd: "android" });
   } finally {
-    if (previousConfig) writeFileSync(configPath, previousConfig);
+    if (original) writeFileSync(configPath, original);
     else rmSync(configPath, { force: true });
   }
-  execFileSync(
-    adb,
-    ["-s", device, "install", "-r", "android/app/build/outputs/apk/debug/app-debug.apk"],
-    { stdio: "inherit" },
-  );
-  // Wait for the launch request only. Waiting for the first rendered frame can
-  // time out during cold starts and causes native-run to restart the ADB server.
-  execFileSync(
-    adb,
-    ["-s", device, "shell", "am", "start", "-n", "com.tingyuan.inyue/.MainActivity"],
-    { stdio: "inherit" },
-  );
-  console.log(`Android 已部署，热更新地址：${androidDevOrigin}`);
+
+  run(adb, ["-s", device, "install", "-r", "android/app/build/outputs/apk/debug/app-debug.apk"]);
+  const ready = await nuxtResponds(signal);
+  signal.throwIfAborted();
+  if (!ready) throw new Error(`Android 安装完成，但 Nuxt 开发服务已断开（${devOrigin}）。`);
+  run(adb, ["-s", device, "reverse", `tcp:${port}`, `tcp:${port}`]);
+  // Start after forwarding and let the WebView render without blocking ADB.
+  run(adb, ["-s", device, "shell", "am", "start", "-S", "-n", "com.tingyuan.inyue/.MainActivity"]);
+}
+
+function run(command, args, options) {
+  execFileSync(command, args, { stdio: "inherit", ...options });
 }

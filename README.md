@@ -12,7 +12,7 @@ npx wrangler d1 migrations apply music-library --local
 npm run dev
 ```
 
-开发地址为 `http://127.0.0.1:5173`，端口被占用时直接报错。`npm start` 同样启动开发服务。
+开发地址固定为 `http://127.0.0.1:5223`。端口被占用或指定其他端口时，命令会报错退出。`npm start` 同样启动开发服务。
 
 ```bash
 npm run lint
@@ -26,7 +26,7 @@ npm run preview
 
 `build` 使用 Cloudflare Worker 配置，服务端入口为 `.output/server/index.mjs`，静态资源位于 `.output/public/`。`preview` 先构建再通过 Wrangler 本地预览。
 
-`npm run generate` 可生成 Web 静态站点。`npm run deploy` 构建并部署到 Cloudflare；部署前检查 `wrangler.jsonc` 中的 Worker 名称及账户配置。`npm run cf-typegen` 更新 Cloudflare 类型声明。
+`npm run generate` 可生成 Web 静态站点。`npm run deploy` 构建并部署到 Cloudflare 的 `production` 环境（`https://inyue.tingyuan.nz`）。`npm run cf-typegen` 更新 Cloudflare 类型声明。
 
 ## 目录与样式
 
@@ -48,10 +48,7 @@ Tailwind 按[官方 Nuxt 指南](https://tailwindcss.com/docs/installation/frame
 需要 JDK 21+、Android SDK 36 和 Platform-Tools。设置 `JAVA_HOME`、`ANDROID_HOME`；真机开启 USB 调试并授权，或启动 Android 模拟器。
 
 ```bash
-npm run build:mobile
-npx cap sync android
-
-# 安装调试包并开启热更新
+# 启动 Web 开发服务、安装 Android 调试包并开启热更新
 npm run android
 
 # 查看真机及模拟器的 Target ID
@@ -63,11 +60,11 @@ npm run android -- --target <ID>
 
 移动端使用 `capacitor` 配置环境关闭 SSR，静态资源独立生成到 `.output-capacitor/public/`，该路径也是 Capacitor 的 `webDir`，与 Web 构建产物互不覆盖。
 
-`npm run android` 启动 Nuxt 移动端开发服务，或复用本项目已启动的移动服务，等页面和 Vite 客户端就绪后安装调试包。WebView 通过 ADB 转发加载 `http://127.0.0.1:5174`，页面、热更新和默认本地 API 都使用这个地址。若其他程序占用 5174，请先释放该端口。Web 开发使用 5173。可通过 `NUXT_PUBLIC_MOBILE_API_ORIGIN` 指定其他后端，该后端需允许热更新页面的源。
+`npm run android` 启动或复用本项目的 Nuxt 服务，等页面和 Vite 就绪后，用 Capacitor 同步、Gradle 构建和 ADB 安装 App。浏览器和 Android 共用 `http://127.0.0.1:5223`，都支持热更新。Android 的地址通过 ADB 反向转发，默认使用同一个本地 API。可通过 `NUXT_PUBLIC_MOBILE_API_ORIGIN` 指定其他后端，该后端需允许热更新页面的源。
 
-运行前请连接并授权手机，或先启动模拟器。连接多台设备时使用 `--target`。Windows PowerShell 可用 `npm.cmd run android -- --target <ID>`，确保参数传给脚本。USB 重连后，若服务还在运行，可用 SDK 自带的 `adb reverse tcp:5174 tcp:5174` 恢复转发，再重开 App。
+运行前请连接并授权手机，或先启动模拟器。连接多台设备时使用 `--target`。Windows PowerShell 可用 `npm.cmd run android -- --target <ID>`。USB 重连后重新运行命令即可恢复转发。
 
-保持启动移动开发服务的终端运行即可使用热更新，按 Ctrl+C 停止服务。复用服务时，`npm run android` 安装并启动 App 后会退出。原生代码或插件变更后重新运行命令。在电脑 Chrome 打开 `chrome://inspect/#devices`，点击应用 WebView 的 **inspect** 调试。
+保持开发服务所在的终端运行，按 Ctrl+C 停止。原生代码或插件变更后重新运行 `npm run android`。在电脑 Chrome 打开 `chrome://inspect/#devices`，点击应用 WebView 的 **inspect** 调试。
 
 若默认 Java 是 17，可在 PowerShell 中临时切换到已安装的 JDK 21：
 
@@ -82,7 +79,7 @@ Android 应用 ID 为 `com.tingyuan.inyue`，应用名称为 `inYue`，原生系
 
 | 变量                                                        | 用途                                                                                       |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `NUXT_PUBLIC_SITE_URL`                                      | Worker 对外的规范 HTTPS 地址。本地开发可用 `http://127.0.0.1:5173`                         |
+| `NUXT_PUBLIC_SITE_URL`                                      | Worker 对外的规范 HTTPS 地址。Nuxt 开发服务固定使用 `http://127.0.0.1:5223`                |
 | `NUXT_BETTER_AUTH_SECRET`                                   | 认证密钥，至少 32 个字符                                                                   |
 | `NUXT_PUBLIC_MOBILE_API_ORIGIN`                             | 打包 Android 时指定的 API HTTPS 源，例如与站点同源                                         |
 | `NUXT_PUBLIC_ANDROID_ORIGIN`                                | Worker 允许的 Android WebView 源，打包默认 `https://localhost`，热更新时配置为实际热更新源 |
@@ -92,7 +89,7 @@ Android 应用 ID 为 `com.tingyuan.inyue`，应用名称为 `inYue`，原生系
 | `NUXT_MEDIA_SIGNING_SECRET`                                 | 媒体签名密钥，至少 32 个字符，与认证密钥分别生成                                           |
 | `NUXT_LIBRARY_QUOTA_BYTES`                                  | 每用户存储额度，默认 1,073,741,824 字节                                                    |
 
-Nuxt 开发时将变量写入项目根目录的 `.env`，Wrangler 预览时可使用 `.dev.vars`。部署时使用 Worker 变量与 Cloudflare Secrets，并将 `wrangler.jsonc` 的 Worker 名称、`DB` 的数据库名称和 ID、`MEDIA` 的私有桶名称替换为实际资源。通过 `npx wrangler d1 migrations apply DB --remote --config wrangler.jsonc` 应用生产迁移。
+Nuxt 开发时将变量写入项目根目录的 `.env`，Wrangler 预览时可使用 `.dev.vars`。`wrangler.jsonc` 的 `env.production` 配置正式域名、发信地址和生产资源绑定。生产密钥保存在 Worker Secrets 中。通过 `npx wrangler d1 migrations apply DB --remote --env production --config wrangler.jsonc` 应用生产迁移。
 
 Google 启用时，在 Web OAuth 客户端登记 `<站点地址>/api/auth/callback/google`，并为 Android 登记包名 `com.tingyuan.inyue` 和对应签名证书的 SHA-1。Android Credential Manager 使用 Web 客户端 ID 请求 ID token。当前 Google 验收搁置。
 

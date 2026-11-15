@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import { vueVitePlugin } from "vite-plugin-dom-source";
 import webManifest from "./public/manifest.json";
+import { devPort } from "./shared/dev-server.mjs";
 import { defaultQuotaBytes } from "./shared/library-limits";
 
 const require = createRequire(import.meta.url);
@@ -89,6 +90,12 @@ export default defineNuxtConfig({
   },
 
   hooks: {
+    listen(server) {
+      const address = server.address();
+      if (address && typeof address !== "string" && address.port === devPort) return;
+      console.error(`开发端口固定为 ${devPort}。`);
+      process.exit(1);
+    },
     "nitro:config"(config) {
       if (!config.dev && config.preset === "cloudflare_module") {
         config.entry = resolve("server/worker.ts");

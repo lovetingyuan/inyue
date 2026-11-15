@@ -28,6 +28,7 @@ export default defineEventHandler(async (event) => {
         title: songs.title,
         artist: songs.artist,
         album: songs.album,
+        year: songs.year,
         duration: songs.duration,
         audioId: songs.audioId,
         coverId: songs.coverId,

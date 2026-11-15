@@ -298,7 +298,7 @@ onBeforeUnmount(() => {
   <div
     v-if="account && !config.integrationPlayback"
     class="drawer app-height mx-auto max-w-[100rem] grid-rows-[minmax(0,1fr)] md:drawer-open"
-    :class="{ 'select-none': native }"
+    :class="{ 'select-none': mounted && native }"
   >
     <input
       id="music-drawer"
@@ -448,10 +448,11 @@ onBeforeUnmount(() => {
       </form>
     </dialog>
   </div>
+  <StartupScreen v-else-if="loading && !offline" />
   <main
     v-else
     class="app-height grid overflow-y-auto md:grid-cols-[minmax(0,1fr)_minmax(26rem,0.8fr)]"
-    :class="{ 'select-none': native }"
+    :class="{ 'select-none': mounted && native }"
   >
     <div
       class="hidden place-items-center overflow-hidden bg-neutral p-10 text-neutral-content md:grid"
@@ -467,13 +468,6 @@ onBeforeUnmount(() => {
             <h1 class="text-3xl font-bold tracking-tight">inYue</h1>
           </header>
           <p v-if="offline" role="status">当前离线，连接网络后可访问音乐库。</p>
-          <p
-            v-else-if="loading"
-            role="status"
-            class="flex items-center gap-2 text-sm text-base-content/65"
-          >
-            <span class="loading loading-spinner loading-xs" aria-hidden="true" /> 正在检查会话…
-          </p>
           <template v-else-if="account">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div>

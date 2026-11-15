@@ -1,13 +1,11 @@
 import type { CapacitorConfig } from "@capacitor/cli";
-import { androidDevOrigin } from "./shared/android-dev.mjs";
-
-const dev = process.env.INYUE_ANDROID_DEV === "1";
+import { devOrigin } from "./shared/dev-server.mjs";
 
 export default {
   appId: "com.tingyuan.inyue",
   appName: "inYue",
   webDir: ".output-capacitor/public",
-  ...(dev ? { server: { url: androidDevOrigin } } : {}),
+  ...(process.env.INYUE_ANDROID_DEV === "1" ? { server: { url: devOrigin } } : {}),
   loggingBehavior: "none",
   plugins: {
     SocialLogin: {
