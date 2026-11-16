@@ -9,10 +9,11 @@ export interface Song {
   description: string | null;
   duration: number | null;
   coverId: string | null;
+  createdAt: number;
 }
 
 export interface SongPage {
-  items: Song[];
+  items: SongDetails[];
   nextOffset: number | null;
   total?: number;
 }

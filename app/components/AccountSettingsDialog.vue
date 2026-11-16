@@ -6,7 +6,7 @@ defineOptions({ name: "AccountSettingsDialog" });
 defineProps<{ account: Account }>();
 
 const session = useSessionStore();
-const { theme } = storeToRefs(useAppStore());
+const { theme, offline } = storeToRefs(useAppStore());
 const profile = useTemplateRef<HTMLDialogElement>("profile");
 
 function bytes(size: number) {
@@ -58,7 +58,7 @@ defineExpose({
         </form>
         <button
           class="btn btn-error btn-outline"
-          :disabled="session.signingOut"
+          :disabled="session.signingOut || offline"
           @click="session.logout()"
         >
           退出登录

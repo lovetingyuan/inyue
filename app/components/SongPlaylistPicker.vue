@@ -8,6 +8,7 @@ const heading = useTemplateRef("heading");
 const titleId = useId();
 const selected = ref(new Set<string>());
 const saving = membership.isLoading;
+const app = useAppStore();
 const error = ref("");
 const playlistErrors = ref(new Map<string, string>());
 const partialSave = ref(false);
@@ -32,6 +33,7 @@ async function open() {
 }
 
 async function save() {
+  if (app.offline) return;
   const songId = song.value?.id;
   if (saving.value || !songId || !changes.value.length) return;
   error.value = "";
@@ -138,7 +140,7 @@ defineExpose({ open });
           <button
             type="submit"
             class="btn btn-primary min-w-18"
-            :disabled="saving || !changes.length"
+            :disabled="saving || !changes.length || app.offline"
           >
             <span v-if="saving" class="loading loading-spinner loading-xs" aria-hidden="true" />
             {{ saving ? "保存中…" : "保存" }}

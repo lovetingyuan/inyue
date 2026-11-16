@@ -28,6 +28,7 @@ const hasCover = computed(() =>
 const oversizedCover = ref(false);
 const reading = ref(false);
 const busy = saveSong.isLoading;
+const app = useAppStore();
 const error = ref("");
 const fieldId = useId();
 const fieldErrors = reactive<Partial<Record<keyof typeof form | "audio" | "cover", string>>>({});
@@ -119,6 +120,7 @@ function clearCover() {
 }
 
 async function save() {
+  if (app.offline) return;
   if (busy.value || reading.value) return;
   error.value = "";
   if (!props.song && !audio.value) fieldErrors.audio ||= "请选择 MP3 文件。";
@@ -354,7 +356,7 @@ defineExpose({ busy });
       <button class="btn btn-ghost" type="button" :disabled="busy" @click="emit('cancel')">
         取消
       </button>
-      <button class="btn btn-primary" :disabled="busy || reading">
+      <button class="btn btn-primary" :disabled="busy || reading || app.offline">
         {{ busy ? "保存中…" : "保存" }}
       </button>
     </div>

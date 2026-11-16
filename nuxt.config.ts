@@ -12,6 +12,7 @@ const nitroRoot = dirname(require.resolve("nitropack/package.json"));
 
 export default defineNuxtConfig({
   telemetry: false,
+  experimental: { appManifest: false },
 
   compatibilityDate: "2025-07-15",
   devtools: { enabled: true },
@@ -61,6 +62,12 @@ export default defineNuxtConfig({
       deployConfig: true,
       nodeCompat: true,
     },
+    hooks: {
+      "prerender:config"(config) {
+        // The Cloudflare entry point can only run in the deployed Worker.
+        delete config.entry;
+      },
+    },
   },
 
   modules: [
@@ -72,20 +79,39 @@ export default defineNuxtConfig({
   ],
 
   pwa: {
-    registerType: "autoUpdate",
+    // The waiting worker activates automatically after the last app window closes.
+    registerType: "prompt",
+    client: { periodicSyncForUpdates: 60 * 60 },
     manifest: { ...webManifest, display: "standalone" },
     generateSW: {
       cleanURLs: false,
-      globPatterns: ["offline.html", "assets/imgs/logo.png", "_nuxt/**/*.{js,css,woff2}"],
-      navigateFallback: null,
+      // Nuxt adds a payload glob when prerendering, but the SPA shell has no payload file.
+      globStrict: false,
+      clientsClaim: true,
+      skipWaiting: false,
+      cleanupOutdatedCaches: true,
+      globPatterns: [
+        "200.html",
+        "assets/**/*",
+        "*.ico",
+        "apple-touch-icon.png",
+        "_nuxt/**/*.{js,css,woff,woff2}",
+      ],
+      // The Nuxt PWA module maps 200.html to its Cloudflare asset URL /200.
+      navigateFallback: "/200",
+      navigateFallbackAllowlist: [
+        /^\/(?:$|\?|(?:login|register|forgot-password|reset-password|songs\/new)\/?(?:$|\?))/,
+      ],
       runtimeCaching: [
         {
-          urlPattern: ({ request, url, sameOrigin }) =>
-            sameOrigin &&
-            request.mode === "navigate" &&
-            ["/", "/login", "/register", "/forgot-password", "/reset-password"].includes(url.pathname),
-          handler: "NetworkOnly",
-          options: { precacheFallback: { fallbackURL: "/offline" } },
+          urlPattern: ({ url, sameOrigin }) =>
+            sameOrigin && url.pathname === "/api/auth-providers" && !url.search,
+          handler: "NetworkFirst",
+          options: {
+            cacheName: "inyue-public-api-v1",
+            cacheableResponse: { statuses: [200] },
+            expiration: { maxEntries: 1, maxAgeSeconds: 86_400, purgeOnQuotaError: true },
+          },
         },
       ],
     },
@@ -101,6 +127,8 @@ export default defineNuxtConfig({
     "nitro:config"(config) {
       if (!config.dev && config.preset === "cloudflare_module") {
         config.entry = resolve("server/worker.ts");
+        config.prerender ??= {};
+        config.prerender.routes = [...(config.prerender.routes ?? []), "/200.html"];
       }
     },
     "better-auth:database:providers"(providers) {
@@ -139,6 +167,7 @@ export default defineNuxtConfig({
     "/register": { headers: { "cache-control": "private, no-store" } },
     "/forgot-password": { headers: { "cache-control": "private, no-store" } },
     "/reset-password": { headers: { "cache-control": "private, no-store" } },
+    "/songs/new": { headers: { "cache-control": "private, no-store" } },
     "/api/**": { headers: { "cache-control": "private, no-store" } },
   },
 

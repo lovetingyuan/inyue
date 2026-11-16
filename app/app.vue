@@ -58,8 +58,9 @@ const redirect = computed(() => {
 const showStartup = computed(
   () =>
     !session.mounted ||
+    !session.ready ||
     Boolean(redirect.value) ||
-    (!app.offline && (!session.ready || (!session.account && !accountRoute.value))),
+    (!app.offline && !session.account && !accountRoute.value),
 );
 
 watch(redirect, (target) => {

@@ -82,10 +82,11 @@ await check(await call(verification), 302);
 
 const web = await check(await call("/api/auth/sign-in/email", { body: signIn }), 200);
 const webHeaders = { cookie: cookie(web) };
-assert.equal(
-  (await (await check(await call("/api/account", { headers: webHeaders }), 200)).json()).email,
-  email,
-);
+const accountResponse = await check(await call("/api/account", { headers: webHeaders }), 200);
+const webAccount = await accountResponse.json();
+assert.equal(webAccount.email, email);
+assert.ok(Number(accountResponse.headers.get("x-inyue-session-expires")) > Date.now());
+assert.equal(accountResponse.headers.get("cache-control"), "private, no-store");
 
 const native = await check(
   await call("/api/auth/sign-in/email", { body: signIn, requestOrigin: android }),
@@ -304,6 +305,11 @@ await check(await call(membership(playlist.id), { headers: first, method: "PUT" 
 await check(await call(membership(playlist.id), { headers: first, method: "PUT" }), 204);
 await check(await call(membership(secondPlaylist.id), { headers: first, method: "PUT" }), 204);
 assert.ok(!(await defaultSongIds()).includes(song.id));
+const songPage = await check(await call("/api/songs", { headers: first }), 200);
+assert.equal(songPage.headers.get("x-inyue-owner"), webAccount.id);
+assert.equal(songPage.headers.get("cache-control"), "private, no-store");
+const listed = (await songPage.json()).items.find((item) => item.id === song.id);
+assert.deepEqual([...listed.playlistIds].sort(), [playlist.id, secondPlaylist.id].sort());
 await check(await call(membership(playlist.id), { headers: first, method: "DELETE" }), 204);
 assert.ok(!(await defaultSongIds()).includes(song.id));
 await check(

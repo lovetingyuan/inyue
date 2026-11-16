@@ -1,9 +1,11 @@
 import { eq, sum } from "drizzle-orm";
 import { files } from "../database/library-schema";
 import { libraryDatabase, libraryQuota } from "../utils/library";
+import { offlineExpiryHeader } from "~~/shared/offline-library";
 
 export default defineEventHandler(async (event) => {
-  const { user } = await requireUserSession(event, { user: { emailVerified: true } });
+  const { user, session } = await requireUserSession(event, { user: { emailVerified: true } });
+  setResponseHeader(event, offlineExpiryHeader, String(new Date(session.expiresAt).getTime()));
   const usage = await libraryDatabase(event)
     .select({ bytes: sum(files.bytes) })
     .from(files)

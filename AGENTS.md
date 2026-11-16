@@ -40,7 +40,7 @@
     4. 在模板或 JSX 中使用组件时，组件标签使用 `PascalCase`。
   - 与 Nuxt 文件命名约定冲突时，以 Nuxt 约定为准。入口文件（如 `app/app.vue`）和文件路由（如 `app/pages/index.vue`、`app/pages/index/songs/new.vue`）沿用 Nuxt 命名，组件 `name` 仍使用 `PascalCase`。
   - 禁止自行封装通用 Hook。优先直接使用 [VueUse](https://vueuse.org/) 提供的组合式函数。
-  - 单个vue组件的行数最好不超过300
+  - 单个vue组件的行数最好不超过300，这个是建议
   - vue组件必须使用setup语法
   - 样式尽量使用tailwindcss而不是style block或者plain css
 - 测试

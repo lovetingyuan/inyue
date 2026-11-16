@@ -1,4 +1,5 @@
 import { songs } from "../../database/library-schema";
+import { offlineOwnerHeader } from "~~/shared/offline-library";
 import { libraryDatabase } from "../../utils/library";
 import { withLibraryFiles } from "../../utils/library-files";
 import { songFields, songMetadata } from "../../utils/library-songs";
@@ -6,6 +7,7 @@ import { audioUpload, coverUpload, uploadForm } from "../../utils/library-upload
 
 export default defineEventHandler(async (event) => {
   const { user } = await requireUserSession(event, { user: { emailVerified: true } });
+  setResponseHeader(event, offlineOwnerHeader, user.id);
   const form = await uploadForm(event);
   const metadata = songMetadata(form);
   const cover = coverUpload(form.get("cover"));

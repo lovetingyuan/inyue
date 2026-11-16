@@ -1,4 +1,5 @@
 import { songs } from "../../database/library-schema";
+import { offlineOwnerHeader } from "~~/shared/offline-library";
 import { libraryDatabase } from "../../utils/library";
 import { cleanupUserFiles, withLibraryFiles } from "../../utils/library-files";
 import { ownedSong, songFields, songMetadata, songOwner } from "../../utils/library-songs";
@@ -6,6 +7,7 @@ import { coverUpload, formText, uploadForm } from "../../utils/library-upload";
 
 export default defineEventHandler(async (event) => {
   const { user } = await requireUserSession(event, { user: { emailVerified: true } });
+  setResponseHeader(event, offlineOwnerHeader, user.id);
   const db = libraryDatabase(event);
   const id = getRouterParam(event, "id") ?? "";
   await ownedSong(db, user.id, id);

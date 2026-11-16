@@ -37,6 +37,7 @@ async function select(id: string) {
       <button
         type="button"
         class="btn btn-ghost btn-circle btn-sm mr-1"
+        v-if="!app.offline"
         aria-label="新建歌单"
         title="新建歌单"
         @click="emit('edit')"
@@ -72,6 +73,7 @@ async function select(id: string) {
       <button
         type="button"
         class="btn btn-ghost btn-circle btn-sm mr-1 border-transparent bg-transparent text-current hover:text-primary"
+        v-if="!app.offline"
         :aria-label="`编辑${item.name}`"
         @click="emit('edit', item)"
       >
@@ -80,3 +82,4 @@ async function select(id: string) {
     </div>
   </div>
 </template>
+const app = useAppStore();

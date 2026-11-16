@@ -3,6 +3,7 @@ import { ArrowLeft } from "@lucide/vue";
 defineOptions({ name: "NewSong" });
 
 const router = useRouter();
+const app = useAppStore();
 const editor = useTemplateRef("editor");
 useHead({ title: "新增歌曲 · inYue" });
 
@@ -27,7 +28,7 @@ onBeforeRouteLeave(() => !editor.value?.busy);
         </button>
         <h1 id="new-song-title" class="text-base font-semibold">新增歌曲</h1>
       </header>
-      <SongEditor ref="editor" @cancel="leave" @saved="leave" />
+      <SongEditor v-show="!app.offline" ref="editor" @cancel="leave" @saved="leave" />
     </div>
   </section>
 </template>

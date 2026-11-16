@@ -67,9 +67,9 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
       </header>
       <main class="flex min-h-0 flex-1 flex-col">
         <p v-if="offline" class="alert alert-info alert-soft m-3" role="status">
-          当前离线，连接网络后可访问音乐库。
+          {{ app.native ? "当前离线，连接网络后可访问音乐库。" : "当前离线 · 仅显示已缓存的内容。" }}
         </p>
-        <slot v-else />
+        <slot v-if="!offline || !app.native" />
       </main>
     </div>
     <div
@@ -105,8 +105,9 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
             <X class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
           </button>
         </div>
-        <nav v-if="!offline" aria-label="曲库" class="flex min-h-0 flex-1 flex-col gap-2 px-3 pb-3">
+        <nav v-if="!offline || !app.native" aria-label="曲库" class="flex min-h-0 flex-1 flex-col gap-2 px-3 pb-3">
           <NuxtLink
+            v-if="!offline"
             to="/songs/new"
             class="btn btn-ghost shrink-0 justify-start gap-3 px-3 font-medium"
             active-class="bg-primary/10 text-primary"

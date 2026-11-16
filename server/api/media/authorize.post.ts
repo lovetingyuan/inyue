@@ -1,4 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { offlineOwnerHeader } from "~~/shared/offline-library";
 import { files, songs } from "../../database/library-schema";
 import { libraryDatabase } from "../../utils/library";
 import { signMedia } from "../../utils/media-access";
@@ -21,6 +22,7 @@ export default defineEventHandler(async (event) => {
   }
   const db = libraryDatabase(event);
   const userId = auth.user.id;
+  setResponseHeader(event, offlineOwnerHeader, userId);
   const [tracks, covers] = await Promise.all([
     db
       .select({

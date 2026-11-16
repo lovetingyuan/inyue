@@ -17,9 +17,14 @@ export function useSongSave() {
       });
       return _data;
     },
-    onSuccess: (song, { songId }, { userId, generation }) => {
+    onSuccess: async (song, { songId }, { userId, generation }) => {
       if (session.generation !== generation) return;
       if (songId && song) player.updateTrackYear(songId, song.year);
+      const scope = session.offlineScope;
+      if (scope && song) {
+        const { updateOfflineSong } = await import("~/utils/offline-library");
+        await updateOfflineSong(scope, song).catch(() => undefined);
+      }
       return Promise.allSettled([
         queryCache.invalidateQueries({ key: libraryKeys.songs(userId) }),
         ...(songId ? [queryCache.invalidateQueries({ key: libraryKeys.song(userId, songId) })] : []),
@@ -73,6 +78,15 @@ export function useLibraryDelete() {
       if (session.generation !== generation) return;
       if (kind === "song") library.songId = undefined;
       else if (library.playlist === id) library.selectPlaylist("default");
+      const scope = session.offlineScope;
+      if (scope) {
+        const { removeOfflineSong, removeOfflinePlaylist } = await import("~/utils/offline-library");
+        if (kind === "song") {
+          await removeOfflineSong(scope, id).catch(() => undefined);
+          const { removeOfflineAudio } = await import("~/utils/offline-media");
+          void removeOfflineAudio(scope, id).catch(() => undefined);
+        } else await removeOfflinePlaylist(scope, id).catch(() => undefined);
+      }
       await Promise.allSettled([
         queryCache.invalidateQueries({ key: libraryKeys.songs(userId) }),
         queryCache.invalidateQueries({ key: libraryKeys.details(userId) }),
@@ -120,6 +134,11 @@ export function useSongMembershipSave() {
     onMutate: () => ({ userId: session.userId, generation: session.generation }),
     async onSuccess({ succeeded }, { songId }, { userId, generation }) {
       if (!succeeded.length || session.generation !== generation) return;
+      const scope = session.offlineScope;
+      if (scope) {
+        const { updateOfflineMembership } = await import("~/utils/offline-library");
+        await updateOfflineMembership(scope, songId, succeeded).catch(() => undefined);
+      }
       const key = libraryKeys.song(userId, songId);
       queryCache.cancelQueries({ key, exact: true });
       const song = queryCache.getQueryData<SongDetails>(key);

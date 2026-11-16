@@ -12,6 +12,11 @@ const messages: Record<string, string> = {
   PLAYLIST_NAME_TAKEN: "歌单名称已存在。",
 };
 
+export function responseStatus(error: unknown) {
+  return typeof error === "object" && error !== null && "statusCode" in error &&
+    typeof error.statusCode === "number" ? error.statusCode : undefined;
+}
+
 function libraryErrorBody(error: unknown) {
   const data =
     typeof error === "object" && error !== null && "data" in error ? error.data : undefined;

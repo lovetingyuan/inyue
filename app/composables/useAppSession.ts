@@ -1,6 +1,7 @@
 import { useMutationCache, useQueryCache } from "@pinia/colada";
-import { useOnline } from "@vueuse/core";
-import { accountQueryKey, libraryKeys } from "~/utils/music-query-keys";
+import { useEventListener, useOnline } from "@vueuse/core";
+import { offlineSessionKey } from "~~/shared/offline-library";
+import { libraryKeys } from "~/utils/music-query-keys";
 
 export function useAppSession() {
   const session = useSessionStore();
@@ -12,15 +13,17 @@ export function useAppSession() {
   const online = useOnline();
   const integrationPlayback = useRuntimeConfig().public.integrationPlayback;
 
-  function updateConnection(isOnline: boolean) {
-    const wasOffline = app.offline;
-    if (!isOnline) cache.cancelQueries({ key: accountQueryKey });
-    if (wasOffline && isOnline && !session.signingOut) void session.refreshAccount();
-    app.offline = !isOnline;
-  }
-
   watch(online, (isOnline) => {
-    if (session.mounted) updateConnection(isOnline);
+    if (session.mounted) void session.setConnection(isOnline);
+  });
+  useEventListener("storage", ({ key }) => {
+    if (!app.native && key === offlineSessionKey) void session.syncOfflineSession();
+  });
+  useEventListener("pageshow", ({ persisted }) => {
+    if (!app.native && persisted) void session.syncOfflineSession();
+  });
+  useEventListener("focus", () => {
+    if (!app.native && app.offline && online.value) void session.setConnection(true);
   });
   watch(
     () => session.userId,
@@ -42,14 +45,21 @@ export function useAppSession() {
     [() => session.userId, () => app.offline, () => session.refreshing],
     ([id, offline, refreshing]) => {
       if (integrationPlayback) return;
-      if (!id || offline) void player.setOwner("");
+      if (!id || (offline && app.native)) void player.setOwner("");
       else if (!refreshing) void player.setOwner(id);
     },
   );
 
   onMounted(() => {
-    updateConnection(online.value);
+    void session.setConnection(online.value);
     session.mounted = true;
+  });
+  watch(() => session.offlineScope, async (scope) => {
+    if (!scope) return;
+    const [{ pruneOfflineMetadata }, { pruneOfflineMedia }] = await Promise.all([
+      import("~/utils/offline-library"), import("~/utils/offline-media"),
+    ]);
+    void Promise.allSettled([pruneOfflineMetadata(scope), pruneOfflineMedia(scope)]);
   });
   onBeforeUnmount(() => {
     void player.setOwner("");

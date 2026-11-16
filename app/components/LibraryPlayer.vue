@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import {
-  AudioLines,
-  ChevronDown,
   ListMusic,
   ListOrdered,
   Pause,
@@ -12,14 +10,24 @@ import {
   SkipForward,
   Volume2,
   VolumeX,
-  X,
 } from "@lucide/vue";
 import { useTimeoutFn } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import type { PlaybackMode } from "~~/shared/types/library";
 
+defineOptions({ name: "LibraryPlayer" });
+
 const player = usePlayerStore();
-const { current: track, queue, position, volume, playing, loading, mode, error } = storeToRefs(player);
+const {
+  current: track,
+  queue,
+  position,
+  volume,
+  playing,
+  loading,
+  mode,
+  error,
+} = storeToRefs(player);
 const showLoadingRing = ref(false);
 const { start: scheduleLoadingRing, stop: cancelLoadingRing } = useTimeoutFn(
   () => {
@@ -47,7 +55,8 @@ const playbackModes = {
   loop: { label: "列表循环", icon: Repeat },
   shuffle: { label: "随机播放", icon: Shuffle },
 };
-const modeLabel = computed(() => `切换播放模式，当前为${playbackModes[mode.value].label}`);
+const playbackMode = computed(() => playbackModes[mode.value]);
+const modeLabel = computed(() => `切换播放模式，当前为${playbackMode.value.label}`);
 const muteLabel = computed(() => (volume.value === 0 ? "取消静音" : "静音"));
 let lastAudibleVolume = 1;
 const changingMode = ref(false);
@@ -83,17 +92,13 @@ watch(
   { flush: "sync" },
 );
 
-function rangeValue(event: Event) {
-  return event.target instanceof HTMLInputElement ? event.target.valueAsNumber : 0;
-}
-
 function toggleMute() {
   return player.setVolume(volume.value === 0 ? lastAudibleVolume : 0);
 }
 
-function commitSeek(event: Event) {
+function commitSeek(value: number) {
   seekPreview.value = undefined;
-  void player.seek(rangeValue(event));
+  void player.seek(value);
 }
 
 async function cycleMode() {
@@ -130,7 +135,7 @@ async function cycleMode() {
           v-if="showModeNotice"
           class="badge badge-neutral badge-sm h-auto whitespace-nowrap rounded-full px-3 py-1 shadow-sm"
         >
-          {{ playbackModes[mode].label }}
+          {{ playbackMode.label }}
         </span>
       </div>
       <button
@@ -138,7 +143,7 @@ async function cycleMode() {
         class="flex min-w-0 cursor-pointer items-center gap-3 rounded-field text-left"
         aria-haspopup="dialog"
         aria-label="打开正在播放"
-        @click="showMusicDialog(nowPlaying)"
+        @click="nowPlaying?.open()"
       >
         <MusicArtwork :src="track.coverUrl" class="w-11" />
         <span class="min-w-0 flex-1">
@@ -203,7 +208,7 @@ async function cycleMode() {
             @click="cycleMode"
           >
             <component
-              :is="playbackModes[mode].icon"
+              :is="playbackMode.icon"
               class="size-5 shrink-0"
               :stroke-width="1.8"
               aria-hidden="true"
@@ -214,7 +219,7 @@ async function cycleMode() {
             class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/12 md:hidden"
             aria-label="播放队列"
             aria-haspopup="dialog"
-            @click="showMusicDialog(queueDialog)"
+            @click="queueDialog?.open()"
           >
             <ListMusic class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
           </button>
@@ -223,18 +228,17 @@ async function cycleMode() {
           class="flex w-full items-center gap-2 text-[11px] text-neutral-content/75 tabular-nums max-md:col-span-2"
         >
           <span>{{ formatMusicTime(displayedPosition) }}</span>
-          <input
+          <PlaybackSlider
             :key="track.id"
             data-playback-seek
             aria-label="播放进度"
-            class="range range-xs min-h-6 min-w-0 flex-1 touch-none text-neutral-content"
-            type="range"
-            min="0"
+            class="min-w-0 flex-1 text-neutral-content"
+            :fill="progress"
             :max="duration"
             step="0.1"
             :value="displayedPosition"
             :disabled="!duration"
-            @input="seekPreview = rangeValue($event)"
+            @input="seekPreview = $event"
             @change="commitSeek"
             @pointercancel="seekPreview = undefined"
             @blur="seekPreview = undefined"
@@ -253,16 +257,15 @@ async function cycleMode() {
           >
             <component :is="volume === 0 ? VolumeX : Volume2" class="size-4" aria-hidden="true" />
           </button>
-          <input
+          <PlaybackSlider
             aria-label="音量"
             data-playback-volume
-            class="range range-xs min-h-6 w-18 min-w-0 touch-none text-neutral-content"
-            type="range"
-            min="0"
+            class="w-18 min-w-0 text-neutral-content"
+            :fill="volume"
             max="1"
             step="0.05"
             :value="volume"
-            @input="player.setVolume(rangeValue($event))"
+            @input="player.setVolume"
           />
         </div>
         <button
@@ -270,7 +273,7 @@ async function cycleMode() {
           class="btn btn-ghost btn-circle hidden text-neutral-content hover:bg-neutral-content/12 md:inline-flex"
           aria-label="播放队列"
           aria-haspopup="dialog"
-          @click="showMusicDialog(queueDialog)"
+          @click="queueDialog?.open()"
         >
           <ListMusic class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
         </button>
@@ -278,245 +281,20 @@ async function cycleMode() {
     </div>
   </footer>
 
-  <dialog ref="nowPlaying" class="modal" aria-labelledby="now-playing-title">
-    <div
-      class="modal-box safe-panel flex h-dvh max-h-dvh w-screen max-w-none flex-col rounded-none bg-base-100 bg-linear-to-b from-primary/10 to-transparent to-70% p-0 sm:h-auto sm:max-h-[90dvh] sm:w-md sm:rounded-box"
-    >
-      <header
-        class="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-5 pt-[calc(0.5rem+var(--safe-area-inset-top,env(safe-area-inset-top,0px)))] pb-1 sm:pt-3"
-      >
-        <form method="dialog" class="justify-self-start">
-          <button class="btn btn-ghost btn-circle min-h-11 min-w-11" aria-label="收起正在播放">
-            <ChevronDown class="size-6 shrink-0" :stroke-width="1.8" aria-hidden="true" />
-          </button>
-        </form>
-        <h2 id="now-playing-title" class="text-sm font-semibold text-base-content/70">正在播放</h2>
-      </header>
-      <div
-        v-if="track"
-        class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-2.5 sm:px-8"
-      >
-        <div class="m-auto grid w-full max-w-sm shrink-0 gap-[clamp(0.875rem,2.2dvh,1.375rem)]">
-          <MusicArtwork
-            :src="track.coverUrl"
-            class="ml-0! w-full max-w-[min(18rem,42dvh)] justify-self-center rounded-[1.5rem]! shadow-xl shadow-base-content/15 ring-1 ring-base-content/8 sm:max-w-[min(16.5rem,36dvh)]"
-          />
-          <div class="min-w-0">
-            <p class="truncate text-[clamp(1.5rem,5vw,1.875rem)] leading-tight font-bold tracking-tight" :title="track.title">
-              {{ track.title }}
-            </p>
-            <p class="mt-1 flex items-baseline gap-2 text-sm text-base-content/70">
-              <span class="truncate">
-                {{ track.artist }}<template v-if="track.album"> · {{ track.album }}</template>
-              </span>
-              <span v-if="track.year != null" class="shrink-0 tabular-nums">
-                <span class="mr-1" aria-hidden="true">·</span>
-                {{ track.year }}年
-              </span>
-            </p>
-          </div>
-          <div>
-            <input
-              :key="track.id"
-              data-playback-seek
-              aria-label="播放进度"
-              class="range range-primary range-xs min-h-6 w-full touch-none"
-              type="range"
-              min="0"
-              :max="duration"
-              step="0.1"
-              :value="displayedPosition"
-              :disabled="!duration"
-              @input="seekPreview = rangeValue($event)"
-              @change="commitSeek"
-              @pointercancel="seekPreview = undefined"
-              @blur="seekPreview = undefined"
-            />
-            <div class="flex justify-between text-xs text-base-content/70 tabular-nums">
-              <span>{{ formatMusicTime(displayedPosition) }}</span
-              ><span>{{ formatMusicTime(duration) }}</span>
-            </div>
-          </div>
-          <div class="flex items-center justify-center gap-6 sm:gap-8">
-            <button
-              type="button"
-              class="btn btn-ghost btn-circle btn-lg"
-              aria-label="上一首"
-              @click="player.step(-1)"
-            >
-              <SkipBack
-                class="size-6 shrink-0"
-                :stroke-width="1.8"
-                aria-hidden="true"
-                fill="currentColor"
-              />
-            </button>
-            <button
-              type="button"
-              class="btn btn-primary btn-circle relative size-16 shadow-lg shadow-primary/20"
-              :aria-label="playing ? '暂停' : '播放'"
-              :aria-busy="loading"
-              @click="player.toggle()"
-            >
-              <span
-                v-if="showLoadingRing"
-                aria-hidden="true"
-                class="pointer-events-none absolute -inset-1 animate-spin rounded-full border-2 border-primary/25 border-t-primary"
-              />
-              <component
-                :is="playing ? Pause : Play"
-                class="size-7 shrink-0"
-                :stroke-width="1.8"
-                aria-hidden="true"
-                fill="currentColor"
-              />
-            </button>
-            <button
-              type="button"
-              class="btn btn-ghost btn-circle btn-lg"
-              aria-label="下一首"
-              @click="player.step(1)"
-            >
-              <SkipForward
-                class="size-6 shrink-0"
-                :stroke-width="1.8"
-                aria-hidden="true"
-                fill="currentColor"
-              />
-            </button>
-          </div>
-          <div class="flex items-center justify-between gap-3 rounded-2xl bg-base-200/75 p-1">
-            <button
-              type="button"
-              class="btn btn-ghost h-11 shrink-0 gap-2 rounded-xl px-3 aria-disabled:opacity-60"
-              :aria-label="modeLabel"
-              :aria-disabled="changingMode"
-              @click="cycleMode"
-            >
-              <component
-                :is="playbackModes[mode].icon"
-                class="size-4 shrink-0"
-                :stroke-width="1.8"
-                aria-hidden="true"
-              />
-              <span aria-live="polite">{{ playbackModes[mode].label }}</span>
-            </button>
-            <div class="flex min-w-0 max-w-32 flex-1 items-center gap-1 pr-3 text-base-content/70">
-              <button
-                type="button"
-                class="btn btn-ghost btn-circle btn-sm shrink-0"
-                :aria-label="muteLabel"
-                :title="muteLabel"
-                @click="toggleMute"
-              >
-                <component :is="volume === 0 ? VolumeX : Volume2" class="size-4" aria-hidden="true" />
-              </button>
-              <input
-                aria-label="音量"
-                data-playback-volume
-                class="range range-xs min-h-6 min-w-0 flex-1 touch-none"
-                type="range"
-                min="0"
-                max="1"
-                step="0.05"
-                :value="volume"
-                @input="player.setVolume(rangeValue($event))"
-              />
-            </div>
-          </div>
-          <div
-            v-if="error"
-            class="flex items-center justify-between gap-2 text-sm text-error"
-            role="alert"
-          >
-            {{ error }} <button class="btn btn-xs" @click="player.refresh()">刷新队列</button>
-          </div>
-        </div>
-      </div>
-    </div>
-    <form method="dialog" class="modal-backdrop">
-      <button tabindex="-1" aria-label="收起正在播放">关闭</button>
-    </form>
-  </dialog>
-  <dialog
-    ref="queueDialog"
-    class="modal modal-bottom sm:modal-middle"
-    aria-labelledby="queue-title"
-  >
-    <div
-      class="modal-box safe-panel grid max-h-[75dvh] grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden"
-    >
-      <div class="flex items-center justify-between gap-2">
-        <h2 id="queue-title" class="text-xl font-bold">
-          播放队列
-          <span class="text-sm font-medium text-base-content/65">{{ queue.length }} 首</span>
-        </h2>
-        <form method="dialog">
-          <button class="btn btn-ghost btn-circle btn-sm" aria-label="关闭播放队列">
-            <X class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
-          </button>
-        </form>
-      </div>
-      <ol class="grid content-start overflow-y-auto">
-        <li
-          v-for="item in queue"
-          :key="item.id"
-          class="flex items-center gap-3 rounded-field p-2"
-          :aria-current="item.id === track?.id ? 'true' : undefined"
-          :class="{ 'bg-primary/10': item.id === track?.id }"
-        >
-          <MusicArtwork :src="item.coverUrl" class="w-9" />
-          <span class="min-w-0 flex-1">
-            <span class="block truncate text-sm font-semibold">{{ item.title }}</span>
-            <span class="block truncate text-xs text-base-content/65">{{ item.artist }}</span>
-          </span>
-          <AudioLines
-            v-if="item.id === track?.id"
-            class="size-4 text-primary shrink-0"
-            :stroke-width="1.8"
-            aria-hidden="true"
-          />
-        </li>
-      </ol>
-    </div>
-    <form method="dialog" class="modal-backdrop">
-      <button aria-label="关闭播放队列">关闭</button>
-    </form>
-  </dialog>
+  <NowPlayingDialog
+    ref="nowPlaying"
+    :duration="duration"
+    :displayed-position="displayedPosition"
+    :progress="progress"
+    :show-loading-ring="showLoadingRing"
+    :playback-mode="playbackMode"
+    :mode-label="modeLabel"
+    :changing-mode="changingMode"
+    :mute-label="muteLabel"
+    @preview-seek="seekPreview = $event"
+    @seek="commitSeek"
+    @cycle-mode="cycleMode"
+    @toggle-mute="toggleMute"
+  />
+  <PlaybackQueueDialog ref="queueDialog" :queue="queue" :current-track-id="track?.id" />
 </template>
-
-<style scoped>
-[data-playback-seek] {
-  --slider-value: v-bind(progress);
-}
-
-[data-playback-volume] {
-  --slider-value: v-bind(volume);
-}
-
-[data-playback-seek],
-[data-playback-volume] {
-  --range-thumb-size: 0.625rem;
-  --range-thumb: currentColor;
-  --range-p: 0px;
-  --range-bg: transparent;
-  --range-fill: 0;
-  --slider-stop: calc(
-    var(--range-thumb-size) / 2 + (100% - var(--range-thumb-size)) * var(--slider-value)
-  );
-  background: linear-gradient(
-      90deg,
-      currentColor var(--slider-stop),
-      color-mix(in oklab, currentColor 24%, transparent) 0
-    )
-    center / 100% 0.25rem no-repeat;
-}
-
-@media (forced-colors: active) {
-  [data-playback-seek],
-  [data-playback-volume] {
-    appearance: auto;
-    background: none;
-  }
-}
-</style>

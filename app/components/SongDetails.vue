@@ -3,14 +3,15 @@ import { ListPlus, Pencil, Trash2, X } from "@lucide/vue";
 import type { Song } from "~~/shared/types/library";
 
 const { data: song, error: queryError, asyncStatus } = useSongDetailsState();
+const app = useAppStore();
 const covers = useCoverQuery(() => (song.value?.coverId ? [song.value.coverId] : []));
 const coverUrl = computed(() =>
-  song.value?.coverId ? covers.data.value?.[song.value.coverId] : undefined,
+  song.value?.coverId ? covers.urls.value[song.value.coverId] : undefined,
 );
 const loading = computed(
   () => !song.value && (!queryError.value || asyncStatus.value === "loading"),
 );
-const error = computed(() => (queryError.value ? libraryError(queryError.value) : ""));
+const error = computed(() => (queryError.value ? app.offline ? "歌曲详情尚未缓存。" : libraryError(queryError.value) : ""));
 const albumAndYear = computed(() => {
   const { album, year } = song.value ?? {};
   return [album, year ? `${year}年` : ""].filter(Boolean).join(" · ");
@@ -84,7 +85,7 @@ const playlistButton = useTemplateRef("playlistButton");
     </p>
     <p v-else-if="error" class="px-4 py-4 text-sm text-error sm:px-6" role="alert">{{ error }}</p>
     <footer
-      v-if="song"
+      v-if="song && !app.offline"
       class="flex shrink-0 flex-wrap items-center gap-1 border-t border-base-300/70 px-4 pt-3 pb-[calc(0.75rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] sm:gap-2 sm:px-6"
     >
       <button

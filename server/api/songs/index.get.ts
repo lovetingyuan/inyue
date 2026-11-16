@@ -1,10 +1,13 @@
-import { and, desc, eq, exists, notExists, or, sql } from "drizzle-orm";
+import { and, desc, eq, exists, inArray, notExists, or, sql } from "drizzle-orm";
+import { offlineOwnerHeader } from "~~/shared/offline-library";
+import type { SongDetails } from "~~/shared/types/library";
 import { memberships, playlists, songs } from "../../database/library-schema";
 import { libraryDatabase } from "../../utils/library";
 import { songFields } from "../../utils/library-songs";
 
 export default defineEventHandler(async (event) => {
   const { user } = await requireUserSession(event, { user: { emailVerified: true } });
+  setResponseHeader(event, offlineOwnerHeader, user.id);
   const db = libraryDatabase(event);
   const query = getQuery(event);
   const term = typeof query.q === "string" ? query.q.trim().slice(0, 250).toLowerCase() : "";
@@ -63,8 +66,21 @@ export default defineEventHandler(async (event) => {
     .offset(offset)
     .all();
   const nextOffset = page.length > 50 ? offset + 50 : null;
-  const total = term && offset === 0
-    ? (nextOffset === null ? page.length : await db.$count(songs, where))
-    : undefined;
-  return { items: page.slice(0, 50), nextOffset, total };
+  const total =
+    term && offset === 0
+      ? nextOffset === null
+        ? page.length
+        : await db.$count(songs, where)
+      : undefined;
+  const items = page.slice(0, 50);
+  const bySong = new Map<string, SongDetails>(items.map((song) => [song.id, { ...song, playlistIds: [] }]));
+  if (items.length) {
+    const rows = await db
+      .select({ songId: memberships.songId, playlistId: memberships.playlistId })
+      .from(memberships)
+      .where(and(eq(memberships.ownerId, user.id), inArray(memberships.songId, [...bySong.keys()])))
+      .all();
+    for (const row of rows) bySong.get(row.songId)?.playlistIds.push(row.playlistId);
+  }
+  return { items: [...bySong.values()], nextOffset, total };
 });

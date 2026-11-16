@@ -6,6 +6,7 @@ import { coverMaxBytes } from "~~/shared/library-limits";
 import type { Playlist, Song } from "~~/shared/types/library";
 
 const library = useLibraryStore();
+const app = useAppStore();
 const { playlist, search, term } = storeToRefs(library);
 const { current, playing, loading: playbackLoading } = storeToRefs(usePlayerStore());
 const router = useRouter();
@@ -14,6 +15,8 @@ const { songs: songQuery, playlists: playlistQuery, play: playFromLibrary } = us
 const { playlists } = usePlaylistState();
 const { data: details } = useSongDetailsState();
 const songs = computed(() => songQuery.data.value?.pages.flatMap(({ items }) => items) ?? []);
+const offlineAudio = useOfflineAudio();
+const firstPlayable = computed(() => songs.value.find((song) => !app.offline || offlineAudio.value?.has(song.id)));
 const searchTotal = computed(() => songQuery.data.value?.pages[0]?.total);
 const { hasNextPage, loadNextPage, isLoading: loading } = songQuery;
 const playlistCovers = useCoverQuery(() =>
@@ -22,7 +25,7 @@ const playlistCovers = useCoverQuery(() =>
 const songCovers = useCoverQuery(() =>
   songs.value.flatMap(({ coverId }) => (coverId ? [coverId] : [])),
 );
-const coverUrls = computed(() => ({ ...playlistCovers.data.value, ...songCovers.data.value }));
+const coverUrls = computed(() => ({ ...playlistCovers.urls.value, ...songCovers.urls.value }));
 const error = computed(() => {
   const cause =
     songQuery.error.value ??
@@ -74,7 +77,7 @@ function play(song: Song) {
 }
 
 function playFirst() {
-  const song = songs.value[0];
+  const song = firstPlayable.value;
   if (song) void play(song);
 }
 
@@ -134,7 +137,7 @@ async function update(action: () => Promise<void>) {
 }
 
 async function savePlaylist() {
-  if (pending.value) return;
+  if (pending.value || app.offline) return;
   dialogError.value = "";
   if (!playlistName.value) playlistErrors.name = "请填写歌单名称。";
   if (!playlistName.value || (playlistCover.value?.size ?? 0) > coverMaxBytes) return;
@@ -218,7 +221,7 @@ onBeforeUnmount(() => {
             </p>
           </div>
           <button
-            v-if="songs[0]"
+            v-if="firstPlayable"
             type="button"
             class="btn btn-primary btn-circle shrink-0 sm:btn-lg"
             aria-label="播放歌单"
@@ -259,7 +262,7 @@ onBeforeUnmount(() => {
             :stroke-width="1.8"
             aria-hidden="true"
           />
-          <p>{{ term ? "没有匹配的歌曲" : "这个歌单还没有歌曲" }}</p>
+          <p>{{ app.offline ? "没有符合条件的已缓存歌曲" : term ? "没有匹配的歌曲" : "这个歌单还没有歌曲" }}</p>
           <!-- <NuxtLink v-if="!term" to="/songs/new" class="btn btn-ghost btn-sm text-primary"
             >新增歌曲</NuxtLink
           > -->
@@ -284,6 +287,7 @@ onBeforeUnmount(() => {
                 class="group flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-field py-2 pr-1 pl-2 text-left lg:pr-3 lg:pl-3"
                 :aria-label="`播放 ${song.title}`"
                 :aria-current="current?.id === song.id ? 'true' : undefined"
+                :disabled="app.offline && !offlineAudio?.has(song.id)"
                 :aria-description="
                   current?.id === song.id
                     ? (playbackLoading ? '正在加载' : playing ? '正在播放' : undefined)
@@ -326,6 +330,7 @@ onBeforeUnmount(() => {
                     >{{ song.artist
                     }}<span v-if="song.album" class="lg:hidden"> · {{ song.album }}</span></span
                   >
+                  <span v-if="app.offline && !offlineAudio?.has(song.id)" class="text-xs text-base-content/65">音频未缓存</span>
                 </span>
                 <span class="hidden w-[26%] truncate text-xs text-base-content/65 lg:block">{{
                   song.album || "—"
@@ -463,7 +468,7 @@ onBeforeUnmount(() => {
               v-if="playlistEdit"
               type="button"
               class="btn btn-error btn-outline mr-auto"
-              :disabled="pending"
+              :disabled="pending || app.offline"
               @click="
                 dialogError = '';
                 deleting = 'playlist';
@@ -474,7 +479,7 @@ onBeforeUnmount(() => {
             </button>
             <button type="button" class="btn" :disabled="pending" @click="dialog?.close()">
               取消</button
-            ><button class="btn btn-primary" :disabled="pending">保存</button>
+            ><button class="btn btn-primary" :disabled="pending || app.offline">保存</button>
           </div>
         </form>
         <SongDetails
@@ -499,7 +504,7 @@ onBeforeUnmount(() => {
           <p v-if="dialogError" class="text-sm text-error" role="alert">{{ dialogError }}</p>
           <div class="flex justify-end gap-2">
             <button class="btn" :disabled="pending" @click="dialog?.close()">取消</button>
-            <button class="btn btn-error" :disabled="pending" @click="update(remove)">
+            <button class="btn btn-error" :disabled="pending || app.offline" @click="update(remove)">
               确认删除
             </button>
           </div>
