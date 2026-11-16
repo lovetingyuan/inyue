@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AudioLines, Clock, Ellipsis, Music, Play, Search, Signal, X } from "@lucide/vue";
+import { AudioLines, Clock, Ellipsis, LoaderCircle, Music, Play, Search, Signal, X } from "@lucide/vue";
 import { useObjectUrl } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import { coverMaxBytes } from "~~/shared/library-limits";
@@ -7,10 +7,10 @@ import type { Playlist, Song } from "~~/shared/types/library";
 
 const library = useLibraryStore();
 const { playlist, search, term } = storeToRefs(library);
-const { current, playing } = storeToRefs(usePlayerStore());
+const { current, playing, loading: playbackLoading } = storeToRefs(usePlayerStore());
 const router = useRouter();
 const showLibrary = computed(() => router.currentRoute.value.path === "/");
-const { songs: songQuery, playlists: playlistQuery, play } = useLibraryQueries();
+const { songs: songQuery, playlists: playlistQuery, play: playFromLibrary } = useLibraryQueries();
 const { playlists } = usePlaylistState();
 const { data: details } = useSongDetailsState();
 const songs = computed(() => songQuery.data.value?.pages.flatMap(({ items }) => items) ?? []);
@@ -69,9 +69,13 @@ async function retryLibrary() {
   if (playlistCovers.error.value) void playlistCovers.refetch();
 }
 
+function play(song: Song) {
+  return playFromLibrary(song, song.coverId ? (coverUrls.value[song.coverId] ?? null) : null);
+}
+
 function playFirst() {
   const song = songs.value[0];
-  if (song) void play(song.id);
+  if (song) void play(song);
 }
 
 function show(kind: typeof panel.value) {
@@ -277,21 +281,27 @@ onBeforeUnmount(() => {
               :class="current?.id === song.id ? 'bg-primary/8' : 'hover:bg-base-200/70'"
             >
               <button
-                class="group flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-field py-2 pr-1 text-left lg:px-3"
+                class="group flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-field py-2 pr-1 pl-2 text-left lg:pr-3 lg:pl-3"
                 :aria-label="`播放 ${song.title}`"
                 :aria-current="current?.id === song.id ? 'true' : undefined"
-                :aria-description="playing && current?.id === song.id ? '正在播放' : undefined"
-                @click="play(song.id)"
+                :aria-description="
+                  current?.id === song.id
+                    ? (playbackLoading ? '正在加载' : playing ? '正在播放' : undefined)
+                    : undefined
+                "
+                @click="play(song)"
               >
                 <span
-                  class="relative hidden w-6 shrink-0 place-items-center text-center text-xs tabular-nums lg:grid"
+                  class="relative grid w-6 shrink-0 place-items-center text-center text-xs tabular-nums"
                   aria-hidden="true"
                 >
-                  <AudioLines
-                    v-if="current?.id === song.id"
-                    class="size-4 text-primary shrink-0"
-                    :stroke-width="1.8"
-                    aria-hidden="true"
+                  <LoaderCircle
+                    v-if="playbackLoading && current?.id === song.id"
+                    class="size-4 animate-spin text-primary"
+                  />
+                  <Signal
+                    v-else-if="playing && current?.id === song.id"
+                    class="playing-bars size-4 text-primary"
                   />
                   <template v-else
                     ><span class="text-base-content/55 group-hover:opacity-0">{{ index + 1 }}</span
@@ -323,13 +333,7 @@ onBeforeUnmount(() => {
                 <span
                   class="grid min-w-8 shrink-0 justify-items-end text-xs text-base-content/65 tabular-nums"
                 >
-                  <Signal
-                    v-if="playing && current?.id === song.id"
-                    class="playing-bars size-4 text-primary"
-                    :stroke-width="2"
-                    aria-hidden="true"
-                  />
-                  <span v-else-if="song.duration != null">{{
+                  <span v-if="song.duration != null">{{
                     formatMusicTime(song.duration)
                   }}</span>
                 </span>
@@ -539,13 +543,10 @@ onBeforeUnmount(() => {
 }
 
 @keyframes playing-bar {
-  0% {
+  from {
     transform: scaleY(0.35);
   }
-  58% {
-    transform: scaleY(0.55);
-  }
-  100% {
+  to {
     transform: scaleY(1);
   }
 }

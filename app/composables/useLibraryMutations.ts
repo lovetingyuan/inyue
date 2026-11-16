@@ -1,30 +1,31 @@
 import { useMutation, useQueryCache } from "@pinia/colada";
-import type { SongDetails } from "~~/shared/types/library";
+import type { Song, SongDetails } from "~~/shared/types/library";
 import { accountQueryKey, libraryKeys } from "~/utils/music-query-keys";
 
 export function useSongSave() {
   const { request } = useMusicApi();
   const queryCache = useQueryCache();
   const session = useSessionStore();
+  const player = usePlayerStore();
 
   return useMutation({
     key: () => [...libraryKeys.user(session.userId), "save-song"],
     mutation: async ({ songId, body }: { songId?: string; body: FormData }) => {
-      await request(songId ? `/api/songs/${songId}` : "/api/songs", {
+      const { _data } = await request<Song>(songId ? `/api/songs/${songId}` : "/api/songs", {
         method: songId ? "PATCH" : "POST",
         body,
       });
+      return _data;
     },
-    onSuccess: (_, { songId }, { userId, generation }) =>
-      session.generation === generation
-        ? Promise.allSettled([
-            queryCache.invalidateQueries({ key: libraryKeys.songs(userId) }),
-            ...(songId
-              ? [queryCache.invalidateQueries({ key: libraryKeys.song(userId, songId) })]
-              : []),
-            queryCache.invalidateQueries({ key: accountQueryKey }),
-          ])
-        : undefined,
+    onSuccess: (song, { songId }, { userId, generation }) => {
+      if (session.generation !== generation) return;
+      if (songId && song) player.updateTrackYear(songId, song.year);
+      return Promise.allSettled([
+        queryCache.invalidateQueries({ key: libraryKeys.songs(userId) }),
+        ...(songId ? [queryCache.invalidateQueries({ key: libraryKeys.song(userId, songId) })] : []),
+        queryCache.invalidateQueries({ key: accountQueryKey }),
+      ]);
+    },
     onMutate: () => ({ userId: session.userId, generation: session.generation }),
   });
 }

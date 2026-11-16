@@ -1,6 +1,5 @@
 import type { PluginListenerHandle } from "@capacitor/core";
 import type { PlaylistPlugin } from "@dwbn/capacitor-plugin-playlist";
-import { useQueryCache } from "@pinia/colada";
 import { defineStore } from "pinia";
 import type {
   MediaAuthorization,
@@ -8,11 +7,9 @@ import type {
   PlaybackSnapshot,
   Track,
 } from "~~/shared/types/library";
-import { libraryKeys } from "~/utils/music-query-keys";
 
 export const usePlayerStore = defineStore("player", () => {
   const { native, request } = useMusicApi();
-  const queryCache = useQueryCache();
   const tracks = shallowRef<Track[]>([]);
   const ids = ref<string[]>([]);
   const order = ref<string[]>([]);
@@ -21,8 +18,12 @@ export const usePlayerStore = defineStore("player", () => {
   const mode = ref<PlaybackMode>("sequential");
   const volume = ref(1);
   const playing = ref(false);
+  const loading = ref(false);
   const error = ref("");
-  const current = computed(() => tracks.value.find((track) => track.id === id.value));
+  const pendingTrack = shallowRef<Omit<Track, "url">>();
+  const current = computed(
+    () => pendingTrack.value ?? tracks.value.find((track) => track.id === id.value),
+  );
   const queue = computed(() => {
     const byId = new Map(tracks.value.map((track) => [track.id, track]));
     return order.value.flatMap((trackId) => byId.get(trackId) ?? []);
@@ -30,12 +31,14 @@ export const usePlayerStore = defineStore("player", () => {
   let player: PlaylistPlugin | undefined;
   let listener: PluginListenerHandle | undefined;
   let audio: HTMLAudioElement | undefined;
+  let webPlayback: Promise<void> | undefined;
   let owner = "";
   let requestedOwner = "";
   let ownerRevision = 0;
   let operations = Promise.resolve();
   let nativeLoadTarget = "";
-  let cancelAuthorization: (() => void) | undefined;
+  let authorization: AbortController | undefined;
+  let selection: AbortController | undefined;
 
   function storageKey(userId: string) {
     return `music-playback:${userId}`;
@@ -60,6 +63,7 @@ export const usePlayerStore = defineStore("player", () => {
 
   function playbackError() {
     playing.value = false;
+    loading.value = false;
     error.value = "无法播放，请检查网络或登录状态，再刷新队列。";
   }
 
@@ -74,14 +78,18 @@ export const usePlayerStore = defineStore("player", () => {
       if (
         status.msgType === eventType.RMXSTATUS_ERROR ||
         status.msgType === eventType.RMXSTATUS_STALLED
-      )
+      ) {
         playbackError();
+        return;
+      }
+      if (status.msgType === eventType.RMXSTATUS_STOPPED) loading.value = false;
       if (status.value && "currentPosition" in status.value) {
         // Android can report the first track while replacing the native queue.
         if (nativeLoadTarget && status.trackId !== nativeLoadTarget) return;
         if (order.value.includes(status.trackId)) id.value = status.trackId;
         position.value = status.value.currentPosition;
         playing.value = status.value.status === "playing";
+        loading.value = status.value.status === "loading";
       }
     });
   }
@@ -98,9 +106,16 @@ export const usePlayerStore = defineStore("player", () => {
     };
     audio.onpause = () => {
       playing.value = false;
+      loading.value = false;
+    };
+    audio.onloadstart = audio.onwaiting = () => {
+      loading.value = true;
+    };
+    audio.oncanplay = audio.onplaying = audio.onemptied = audio.onabort = () => {
+      loading.value = false;
     };
     audio.onended = () => {
-      void run(() => step(1));
+      if (!pendingTrack.value) void run(() => step(1));
     };
     audio.onerror = playbackError;
     if ("mediaSession" in navigator) {
@@ -123,7 +138,18 @@ export const usePlayerStore = defineStore("player", () => {
     return audio;
   }
 
-  async function load(selected: string, time: number, autoplay: boolean) {
+  function playWeb(output: HTMLAudioElement) {
+    // Buffering can keep play() pending while the user issues more player commands.
+    const playback = output.play();
+    webPlayback = playback;
+    void playback.catch((cause: unknown) => {
+      if (webPlayback !== playback || (cause instanceof DOMException && cause.name === "AbortError"))
+        return;
+      playbackError();
+    });
+  }
+
+  async function load(selected: string, time: number, autoplay: boolean, signal?: AbortSignal) {
     const track = tracks.value.find(({ id }) => id === selected);
     if (!track) return;
     id.value = selected;
@@ -131,7 +157,7 @@ export const usePlayerStore = defineStore("player", () => {
     if (native) {
       await initializeNative();
       const output = player;
-      if (owner !== requestedOwner || !output) return;
+      if (owner !== requestedOwner || signal?.aborted || !output) return;
       nativeLoadTarget = selected;
       try {
         await output.setLoop({ loop: mode.value === "loop" && order.value.length > 1 });
@@ -147,7 +173,7 @@ export const usePlayerStore = defineStore("player", () => {
           options: { startPaused: true, playFromId: selected },
         });
         await output.setPlaybackVolume({ volume: volume.value });
-        if (owner !== requestedOwner) return;
+        if (owner !== requestedOwner || signal?.aborted) return;
         if (autoplay) await output.playTrackById({ id: selected, position: time });
         else await output.selectTrackById({ id: selected, position: time });
       } finally {
@@ -155,6 +181,7 @@ export const usePlayerStore = defineStore("player", () => {
       }
     } else {
       const output = webAudio();
+      webPlayback = undefined;
       output.src = track.url;
       output.volume = volume.value;
       output.currentTime = time;
@@ -166,7 +193,7 @@ export const usePlayerStore = defineStore("player", () => {
           artwork: track.coverUrl ? [{ src: track.coverUrl }] : [],
         });
       }
-      if (autoplay) await output.play();
+      if (autoplay) playWeb(output);
     }
   }
 
@@ -182,29 +209,23 @@ export const usePlayerStore = defineStore("player", () => {
     return [selected, ...remaining];
   }
 
-  async function authorize(userId: string, list: string[]) {
-    if (!list.length) return [];
-    const entry = queryCache.ensure({
-      key: [...libraryKeys.user(userId), "track-authorization", list],
-      query: async ({ signal }) => {
-        const tracks: Track[] = [];
-        for (let index = 0; index < list.length; index += 80) {
-          const { _data } = await request<MediaAuthorization>("/api/media/authorize", {
-            method: "POST",
-            body: { songIds: list.slice(index, index + 80) },
-            signal,
-          });
-          tracks.push(...(_data?.tracks ?? []));
-        }
-        return tracks;
-      },
-    });
-    cancelAuthorization = () => queryCache.cancel(entry);
+  async function authorize(list: string[], controller = new AbortController()) {
+    const { signal } = controller;
+    authorization = controller;
     try {
-      return (await queryCache.fetch(entry)).data ?? [];
+      const authorized: Track[] = [];
+      for (let index = 0; index < list.length; index += 80) {
+        if (signal.aborted) break;
+        const { _data } = await request<MediaAuthorization>("/api/media/authorize", {
+          method: "POST",
+          body: { songIds: list.slice(index, index + 80) },
+          signal,
+        });
+        authorized.push(...(_data?.tracks ?? []));
+      }
+      return authorized;
     } finally {
-      cancelAuthorization = undefined;
-      queryCache.remove(entry);
+      authorization = undefined;
     }
   }
 
@@ -213,12 +234,13 @@ export const usePlayerStore = defineStore("player", () => {
     selected: string,
     autoplay: boolean,
     snapshot?: PlaybackSnapshot,
+    controller?: AbortController,
   ) {
     const userId = owner;
     const generation = ownerRevision;
     if (!userId || userId !== requestedOwner) return;
-    const authorized = await authorize(userId, list);
-    if (generation !== ownerRevision) return;
+    const authorized = await authorize(list, controller);
+    if (generation !== ownerRevision || controller?.signal.aborted) return;
     const available = new Set(authorized.map((track) => track.id));
     const valid = list.filter((track) => available.has(track));
     if (!valid.length) {
@@ -234,7 +256,7 @@ export const usePlayerStore = defineStore("player", () => {
     if (!next) return;
     const previousOrder = snapshot?.order.filter((track) => available.has(track));
     order.value = previousOrder?.length === valid.length ? previousOrder : arrange(valid, next);
-    await load(next, next === selected ? (snapshot?.position ?? 0) : 0, autoplay);
+    await load(next, next === selected ? (snapshot?.position ?? 0) : 0, autoplay, controller?.signal);
   }
 
   async function restore() {
@@ -268,7 +290,7 @@ export const usePlayerStore = defineStore("player", () => {
       if (playing.value) await player.pause();
       else await player.play();
     } else if (audio) {
-      if (audio.paused) await audio.play();
+      if (audio.paused) playWeb(audio);
       else audio.pause();
     }
   }
@@ -343,6 +365,7 @@ export const usePlayerStore = defineStore("player", () => {
   }
 
   async function clearQueue() {
+    webPlayback = undefined;
     resetQueue();
     if (owner) localStorage.removeItem(storageKey(owner));
     if (player) await player.clearAllItems();
@@ -360,6 +383,7 @@ export const usePlayerStore = defineStore("player", () => {
     id.value = "";
     position.value = 0;
     playing.value = false;
+    loading.value = false;
   }
 
   async function remove(trackId: string) {
@@ -396,6 +420,8 @@ export const usePlayerStore = defineStore("player", () => {
     player = undefined;
     if (audio) {
       audio.ontimeupdate = audio.onplay = audio.onpause = audio.onended = audio.onerror = null;
+      audio.onloadstart = audio.onwaiting = audio.oncanplay = audio.onplaying = null;
+      audio.onemptied = audio.onabort = null;
       audio.pause();
       audio.removeAttribute("src");
       audio.load();
@@ -415,7 +441,12 @@ export const usePlayerStore = defineStore("player", () => {
     if (!import.meta.client || requestedOwner === userId) return operations;
     requestedOwner = userId;
     const generation = ++ownerRevision;
-    cancelAuthorization?.();
+    selection?.abort();
+    selection = undefined;
+    pendingTrack.value = undefined;
+    authorization?.abort();
+    webPlayback = undefined;
+    audio?.pause();
     resetQueue();
     operations = operations.then(async () => {
       if (generation !== ownerRevision) return;
@@ -436,19 +467,45 @@ export const usePlayerStore = defineStore("player", () => {
     return operations;
   }
 
-  function run(action: () => Promise<void>) {
+  function run(action: () => Promise<void>, signal?: AbortSignal) {
     const userId = requestedOwner;
     const generation = ownerRevision;
     operations = operations.then(async () => {
-      if (!userId || owner !== userId || generation !== ownerRevision) return;
+      if (!userId || owner !== userId || generation !== ownerRevision || signal?.aborted) return;
       error.value = "";
       try {
         await action();
       } catch {
-        if (generation === ownerRevision) playbackError();
+        if (generation === ownerRevision && !signal?.aborted) playbackError();
       }
     });
     return operations;
+  }
+
+  async function play(track: Omit<Track, "url">, loadIds: (signal: AbortSignal) => Promise<string[]>) {
+    if (!requestedOwner) return;
+    selection?.abort();
+    const controller = new AbortController();
+    const { signal } = controller;
+    selection = controller;
+    pendingTrack.value = track;
+    error.value = "";
+    webPlayback = undefined;
+    audio?.pause();
+    try {
+      await run(async () => {
+        await player?.pause();
+        if (signal.aborted) return;
+        const list = await loadIds(signal);
+        if (signal.aborted) return;
+        await setQueue(list, track.id, true, undefined, controller);
+      }, signal);
+    } finally {
+      if (selection === controller) {
+        selection = undefined;
+        pendingTrack.value = undefined;
+      }
+    }
   }
 
   return {
@@ -458,20 +515,21 @@ export const usePlayerStore = defineStore("player", () => {
     id,
     current,
     queue,
-    position,
+    position: computed(() => (pendingTrack.value ? 0 : position.value)),
     mode,
     volume,
-    playing,
+    playing: computed(() => !pendingTrack.value && playing.value),
+    loading: computed(() => Boolean(pendingTrack.value) || loading.value),
     error,
     setOwner,
-    play: (loadIds: () => Promise<string[]>, selected: string) =>
-      run(async () => {
-        await setQueue(await loadIds(), selected, true);
-      }),
+    play,
     toggle: () => run(toggle),
     step: (direction: number) => run(() => step(direction)),
     seek: (time: number) => run(() => seek(time)),
     setVolume: (value: number) => run(() => setVolume(value)),
+    updateTrackYear(trackId: string, year: number | null) {
+      tracks.value = tracks.value.map((track) => (track.id === trackId ? { ...track, year } : track));
+    },
     setMode: (value: PlaybackMode) => run(() => setMode(value)),
     refresh: () => run(refresh),
     remove: (trackId: string) => run(() => remove(trackId)),

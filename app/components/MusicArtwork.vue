@@ -13,7 +13,7 @@ watch(
 
 <template>
   <span
-    class="relative grid aspect-square shrink-0 place-items-center overflow-hidden rounded-[18%] bg-[#29493c] ml-2"
+    class="relative grid aspect-square shrink-0 place-items-center overflow-hidden rounded-[18%] bg-artwork-background"
   >
     <img
       v-if="src && !broken"
@@ -26,8 +26,8 @@ watch(
       v-else
       class="grid size-[76%] place-items-center rounded-full bg-[repeating-radial-gradient(circle,#19332a_0%_6%,#36584a_7%_8%)] shadow-md"
     >
-      <span class="grid size-[33%] place-items-center rounded-full bg-[#c6deb1]">
-        <span class="size-[18%] rounded-full bg-[#263b30]" />
+      <span class="grid size-[33%] place-items-center rounded-full bg-artwork-label">
+        <span class="size-[18%] rounded-full bg-artwork-spindle" />
       </span>
     </span>
     <button

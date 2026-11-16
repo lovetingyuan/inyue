@@ -1,5 +1,28 @@
+@layer focus-reset;
 @import "tailwindcss";
 @plugin "daisyui";
+
+@layer focus-reset {
+  * {
+    outline-offset: 0 !important;
+  }
+
+  :focus,
+  :focus-within {
+    outline-color: color-mix(in oklab, var(--color-primary) 65%, transparent) !important;
+  }
+
+  :is(.input, .textarea, .select, .file-input, .checkbox, .radio, .toggle, .range):focus-within {
+    border-color: var(--color-primary) !important;
+  }
+}
+
+@theme {
+  --color-artwork-background: #29493c;
+  --color-artwork-label: #c6deb1;
+  --color-artwork-spindle: #263b30;
+  --color-google-icon-background: #fff;
+}
 
 @plugin "daisyui/theme" {
   name: "light";

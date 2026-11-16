@@ -81,7 +81,9 @@ export default defineNuxtConfig({
       runtimeCaching: [
         {
           urlPattern: ({ request, url, sameOrigin }) =>
-            sameOrigin && request.mode === "navigate" && url.pathname === "/",
+            sameOrigin &&
+            request.mode === "navigate" &&
+            ["/", "/login", "/register", "/forgot-password", "/reset-password"].includes(url.pathname),
           handler: "NetworkOnly",
           options: { precacheFallback: { fallbackURL: "/offline" } },
         },
@@ -133,6 +135,10 @@ export default defineNuxtConfig({
 
   routeRules: {
     "/": { headers: { "cache-control": "private, no-store" } },
+    "/login": { headers: { "cache-control": "private, no-store" } },
+    "/register": { headers: { "cache-control": "private, no-store" } },
+    "/forgot-password": { headers: { "cache-control": "private, no-store" } },
+    "/reset-password": { headers: { "cache-control": "private, no-store" } },
     "/api/**": { headers: { "cache-control": "private, no-store" } },
   },
 

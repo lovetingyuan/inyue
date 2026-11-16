@@ -11,6 +11,7 @@ import {
   SkipBack,
   SkipForward,
   Volume2,
+  VolumeX,
   X,
 } from "@lucide/vue";
 import { useTimeoutFn } from "@vueuse/core";
@@ -18,7 +19,27 @@ import { storeToRefs } from "pinia";
 import type { PlaybackMode } from "~~/shared/types/library";
 
 const player = usePlayerStore();
-const { current: track, queue, position, volume, playing, mode, error } = storeToRefs(player);
+const { current: track, queue, position, volume, playing, loading, mode, error } = storeToRefs(player);
+const showLoadingRing = ref(false);
+const { start: scheduleLoadingRing, stop: cancelLoadingRing } = useTimeoutFn(
+  () => {
+    showLoadingRing.value = true;
+  },
+  300,
+  { immediate: false },
+);
+watch(
+  loading,
+  (isLoading) => {
+    if (isLoading) {
+      scheduleLoadingRing();
+    } else {
+      cancelLoadingRing();
+      showLoadingRing.value = false;
+    }
+  },
+  { immediate: true, flush: "sync" },
+);
 const nowPlaying = useTemplateRef("nowPlaying");
 const queueDialog = useTemplateRef("queueDialog");
 const playbackModes = {
@@ -27,6 +48,8 @@ const playbackModes = {
   shuffle: { label: "随机播放", icon: Shuffle },
 };
 const modeLabel = computed(() => `切换播放模式，当前为${playbackModes[mode.value].label}`);
+const muteLabel = computed(() => (volume.value === 0 ? "取消静音" : "静音"));
+let lastAudibleVolume = 1;
 const changingMode = ref(false);
 const {
   isPending: showModeNotice,
@@ -38,6 +61,14 @@ const seekPreview = ref<number>();
 const displayedPosition = computed(() => seekPreview.value ?? position.value);
 const progress = computed(() =>
   duration.value ? Math.min(1, Math.max(0, displayedPosition.value / duration.value)) : 0,
+);
+
+watch(
+  volume,
+  (value) => {
+    if (value > 0) lastAudibleVolume = value;
+  },
+  { immediate: true, flush: "sync" },
 );
 
 watch(
@@ -54,6 +85,10 @@ watch(
 
 function rangeValue(event: Event) {
   return event.target instanceof HTMLInputElement ? event.target.valueAsNumber : 0;
+}
+
+function toggleMute() {
+  return player.setVolume(volume.value === 0 ? lastAudibleVolume : 0);
 }
 
 function commitSeek(event: Event) {
@@ -85,7 +120,7 @@ async function cycleMode() {
     </div>
     <div
       v-if="track"
-      class="relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 rounded-box bg-neutral px-2.5 py-2 text-neutral-content shadow-lg sm:px-4 md:grid-cols-[minmax(0,1fr)_minmax(14rem,1.4fr)_minmax(0,1fr)]"
+      class="relative grid grid-cols-[minmax(0,1fr)_auto_6rem] items-center gap-x-2 gap-y-1 rounded-box bg-neutral px-2.5 py-2 text-neutral-content shadow-lg sm:px-4 md:grid-cols-[minmax(0,1fr)_minmax(14rem,1.4fr)_minmax(0,1fr)]"
     >
       <div
         role="status"
@@ -112,7 +147,7 @@ async function cycleMode() {
         </span>
       </button>
       <div class="contents md:flex md:flex-col md:items-center">
-        <div class="flex items-center gap-0.5 md:gap-2">
+        <div class="flex items-center gap-0.5 max-md:col-span-2 md:gap-2">
           <button
             type="button"
             class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/12"
@@ -128,10 +163,16 @@ async function cycleMode() {
           </button>
           <button
             type="button"
-            class="btn btn-circle size-10 border-0 bg-neutral-content text-neutral hover:bg-neutral-content/85"
+            class="btn btn-circle relative size-10 border-0 bg-neutral-content text-neutral hover:bg-neutral-content/85"
             :aria-label="playing ? '暂停' : '播放'"
+            :aria-busy="loading"
             @click="player.toggle()"
           >
+            <span
+              v-if="showLoadingRing"
+              aria-hidden="true"
+              class="pointer-events-none absolute -inset-1 animate-spin rounded-full border-2 border-neutral-content/25 border-t-neutral-content"
+            />
             <component
               :is="playing ? Pause : Play"
               class="size-5 shrink-0"
@@ -179,7 +220,7 @@ async function cycleMode() {
           </button>
         </div>
         <div
-          class="col-span-full flex w-full items-center gap-2 text-[11px] text-neutral-content/75 tabular-nums"
+          class="flex w-full items-center gap-2 text-[11px] text-neutral-content/75 tabular-nums max-md:col-span-2"
         >
           <span>{{ formatMusicTime(displayedPosition) }}</span>
           <input
@@ -201,13 +242,21 @@ async function cycleMode() {
           <span>{{ formatMusicTime(duration) }}</span>
         </div>
       </div>
-      <div class="hidden items-center justify-end gap-3 md:flex">
-        <label class="hidden items-center gap-2 lg:flex">
-          <Volume2 class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+      <div class="flex min-w-0 items-center justify-end md:gap-2">
+        <div class="flex min-w-0 items-center gap-1">
+          <button
+            type="button"
+            class="btn btn-ghost btn-circle btn-sm shrink-0 text-neutral-content hover:bg-neutral-content/12"
+            :aria-label="muteLabel"
+            :title="muteLabel"
+            @click="toggleMute"
+          >
+            <component :is="volume === 0 ? VolumeX : Volume2" class="size-4" aria-hidden="true" />
+          </button>
           <input
             aria-label="音量"
             data-playback-volume
-            class="range range-xs min-h-6 w-18 touch-none text-neutral-content"
+            class="range range-xs min-h-6 w-18 min-w-0 touch-none text-neutral-content"
             type="range"
             min="0"
             max="1"
@@ -215,10 +264,10 @@ async function cycleMode() {
             :value="volume"
             @input="player.setVolume(rangeValue($event))"
           />
-        </label>
+        </div>
         <button
           type="button"
-          class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/12"
+          class="btn btn-ghost btn-circle hidden text-neutral-content hover:bg-neutral-content/12 md:inline-flex"
           aria-label="播放队列"
           aria-haspopup="dialog"
           @click="showMusicDialog(queueDialog)"
@@ -261,7 +310,8 @@ async function cycleMode() {
                 {{ track.artist }}<template v-if="track.album"> · {{ track.album }}</template>
               </span>
               <span v-if="track.year != null" class="shrink-0 tabular-nums">
-                <span class="mr-1" aria-hidden="true">·</span> {{ track.year }}
+                <span class="mr-1" aria-hidden="true">·</span>
+                {{ track.year }}年
               </span>
             </p>
           </div>
@@ -303,10 +353,16 @@ async function cycleMode() {
             </button>
             <button
               type="button"
-              class="btn btn-primary btn-circle size-16 shadow-lg shadow-primary/20"
+              class="btn btn-primary btn-circle relative size-16 shadow-lg shadow-primary/20"
               :aria-label="playing ? '暂停' : '播放'"
+              :aria-busy="loading"
               @click="player.toggle()"
             >
+              <span
+                v-if="showLoadingRing"
+                aria-hidden="true"
+                class="pointer-events-none absolute -inset-1 animate-spin rounded-full border-2 border-primary/25 border-t-primary"
+              />
               <component
                 :is="playing ? Pause : Play"
                 class="size-7 shrink-0"
@@ -345,8 +401,16 @@ async function cycleMode() {
               />
               <span aria-live="polite">{{ playbackModes[mode].label }}</span>
             </button>
-            <label class="flex min-w-0 max-w-32 flex-1 items-center gap-2 pr-3 text-base-content/70">
-              <Volume2 class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+            <div class="flex min-w-0 max-w-32 flex-1 items-center gap-1 pr-3 text-base-content/70">
+              <button
+                type="button"
+                class="btn btn-ghost btn-circle btn-sm shrink-0"
+                :aria-label="muteLabel"
+                :title="muteLabel"
+                @click="toggleMute"
+              >
+                <component :is="volume === 0 ? VolumeX : Volume2" class="size-4" aria-hidden="true" />
+              </button>
               <input
                 aria-label="音量"
                 data-playback-volume
@@ -358,7 +422,7 @@ async function cycleMode() {
                 :value="volume"
                 @input="player.setVolume(rangeValue($event))"
               />
-            </label>
+            </div>
           </div>
           <div
             v-if="error"

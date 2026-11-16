@@ -4,7 +4,6 @@ import type { AccountAction } from "~/types/account";
 export function useAccountActions() {
   const { native, request, signIn, signOut } = useMusicApi();
   const auth = useAuthClient();
-  const { googleClientId } = useRuntimeConfig().public;
   const cache = useMutationCache();
   // Keep credentials out of mutation variables and discard the response and error entry on settlement.
   let action: AccountAction | undefined;
@@ -32,7 +31,7 @@ export function useAccountActions() {
         case "forgot":
           await request("/api/auth/request-password-reset", {
             method: "POST",
-            body: { email: input.email, redirectTo: "/" },
+            body: { email: input.email, redirectTo: "/reset-password" },
           });
           break;
         case "reset":
@@ -50,14 +49,23 @@ export function useAccountActions() {
         case "google":
           if (native) {
             const { SocialLogin } = await import("@capgo/capacitor-social-login");
-            await SocialLogin.initialize({ google: { webClientId: googleClientId } });
+            await SocialLogin.initialize({
+              google: {
+                webClientId: input.clientId,
+                skipAuthOnlyAuthorizationAfterSignIn: true,
+              },
+            });
             const { result } = await SocialLogin.login({ provider: "google", options: {} });
             if (!("idToken" in result) || !result.idToken)
               throw new Error("Google ID token is missing");
             await signIn({ provider: "google", idToken: { token: result.idToken } });
           } else {
-            const result = await auth?.signIn.social({ provider: "google", callbackURL: "/" });
-            if (result?.error) throw new Error(result.error.message);
+            const result = await auth?.signIn.social({
+              provider: "google",
+              callbackURL: input.callbackURL,
+              errorCallbackURL: input.errorCallbackURL,
+            });
+            if (!result?.data?.url) throw new Error("Google authorization URL is missing");
           }
           break;
       }

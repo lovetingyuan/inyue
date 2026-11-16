@@ -85,13 +85,38 @@ Android 应用 ID 为 `com.tingyuan.inyue`，应用名称为 `inYue`，原生系
 | `NUXT_PUBLIC_ANDROID_ORIGIN`                                | Worker 允许的 Android WebView 源，打包默认 `https://localhost`，热更新时配置为实际热更新源 |
 | `NUXT_RESEND_API_KEY`、`NUXT_MAIL_FROM`                     | Resend API 密钥和已验证域名下的发信地址                                                    |
 | `NUXT_MAIL_PREVIEW`                                         | 本地使用 `true`，验证和重置链接输出至本地日志                                              |
-| `NUXT_PUBLIC_GOOGLE_CLIENT_ID`、`NUXT_GOOGLE_CLIENT_SECRET` | 可选。Google Web OAuth 客户端 ID 与密钥                                                    |
+| `NUXT_PUBLIC_GOOGLE_CLIENT_ID`、`NUXT_GOOGLE_CLIENT_SECRET` | 可选。两项都配置后启用 Google 登录。Android 从它连接的 API 获取 Web 客户端 ID              |
 | `NUXT_MEDIA_SIGNING_SECRET`                                 | 媒体签名密钥，至少 32 个字符，与认证密钥分别生成                                           |
 | `NUXT_LIBRARY_QUOTA_BYTES`                                  | 每用户存储额度，默认 1,073,741,824 字节                                                    |
 
 Nuxt 开发时将变量写入项目根目录的 `.env`，Wrangler 预览时可使用 `.dev.vars`。`wrangler.jsonc` 的 `env.production` 配置正式域名、发信地址和生产资源绑定。生产密钥保存在 Worker Secrets 中。通过 `npx wrangler d1 migrations apply DB --remote --env production --config wrangler.jsonc` 应用生产迁移。
 
-Google 启用时，在 Web OAuth 客户端登记 `<站点地址>/api/auth/callback/google`，并为 Android 登记包名 `com.tingyuan.inyue` 和对应签名证书的 SHA-1。Android Credential Manager 使用 Web 客户端 ID 请求 ID token。当前 Google 验收搁置。
+## Google 登录配置
+
+1. 在 [Google Auth Platform](https://console.cloud.google.com/auth/overview) 选择项目，填写 **Branding** 的应用名称 `inYue`、用户支持邮箱和开发者联系邮箱。个人 Gmail 账号选 **Audience → External**。测试时可在 **Test users** 加入测试账号。登录使用 `openid`、`email`、`profile` 权限。
+2. 在 [Clients](https://console.cloud.google.com/auth/clients) 新建 **Web application**，按需填写以下 **Authorized redirect URIs**。从对应的站点地址打开 inYue 发起登录。
+
+   - 本地 Nuxt 开发服务：`http://127.0.0.1:5223/api/auth/callback/google`
+   - 生产站点：`https://inyue.tingyuan.nz/api/auth/callback/google`
+
+3. 在同一 Google Cloud 项目新建 **Android** 客户端，包名填 `com.tingyuan.inyue`，SHA-1 填实际安装包的签名指纹。在 `android/` 下运行 `./gradlew signingReport`（Windows 为 `.\gradlew.bat signingReport`）查看调试签名。每种签名分别建一个 Android 客户端。通过 Google Play 安装时使用 Play Console 中的 **应用签名密钥证书** SHA-1。
+4. 本地把 Web application 的 ID 和密钥写入项目根目录的 `.env`，然后重启 `npm run dev` 或 `npm run android` 启动的开发服务。
+
+   ```dotenv
+   NUXT_PUBLIC_GOOGLE_CLIENT_ID=你的Web客户端ID.apps.googleusercontent.com
+   NUXT_GOOGLE_CLIENT_SECRET=你的Web客户端密钥
+   ```
+
+5. 生产环境把同一个 Web 客户端 ID 加入 `wrangler.jsonc` 的 `env.production.vars`。用下面的命令交互输入 Web 客户端密钥，然后部署。
+
+   ```bash
+   npx wrangler secret put NUXT_GOOGLE_CLIENT_SECRET --env production --config wrangler.jsonc
+   npm run deploy
+   ```
+
+正式打包 Android 时，将 `NUXT_PUBLIC_MOBILE_API_ORIGIN` 指向 `https://inyue.tingyuan.nz`。Android 使用 Credential Manager，Google 客户端密钥只保存在服务端。首次用 Google 登录时，符合邮箱验证条件的同邮箱账号会沿用原有曲库。使用第三方邮箱注册的 Google 账号，首次创建 inYue 账号后需要通过 inYue 邮件验证。
+
+[Google Web OAuth 配置](https://developers.google.com/identity/protocols/oauth2/web-server) · [Google Android 登录配置](https://codelabs.developers.google.com/sign-in-with-google-android)
 
 ## 本地集成验证
 

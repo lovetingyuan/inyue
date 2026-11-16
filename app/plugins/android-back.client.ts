@@ -13,8 +13,10 @@ export default defineNuxtPlugin({
         app.drawerOpen = false;
         return;
       }
+      const route = router.currentRoute.value;
       if (canGoBack) router.back();
-      else if (router.currentRoute.value.path !== "/") void router.replace("/");
+      else if (route.path !== "/" && route.path !== "/login")
+        void router.replace(route.meta.layout === "account" ? "/login" : "/");
       else void App.minimizeApp();
     });
     if (import.meta.hot)

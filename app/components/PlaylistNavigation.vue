@@ -20,7 +20,7 @@ async function select(id: string) {
 
 <template>
   <div
-    class="grid content-start gap-1 [&_button:active]:translate-none [&_button:focus-visible]:-outline-offset-2"
+    class="grid grid-cols-1 content-start gap-1 [&_button:active]:translate-none [&_button:focus-visible]:-outline-offset-2"
   >
     <button
       type="button"
@@ -66,8 +66,8 @@ async function select(id: string) {
         :aria-current="selected === item.id ? 'true' : undefined"
         @click="select(item.id)"
       >
-        <MusicArtwork :src="item.coverId ? covers[item.coverId] : undefined" class="w-6" />
-        <span class="truncate">{{ item.name }}</span>
+        <MusicArtwork :src="item.coverId ? covers[item.coverId] : undefined" class="w-6 shrink-0" />
+        <span class="min-w-0 truncate">{{ item.name }}</span>
       </button>
       <button
         type="button"

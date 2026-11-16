@@ -149,16 +149,22 @@ await check(await call(media, { method: "HEAD" }), 403);
 
 const resetLog = await readFile(workerLog, "utf8");
 await check(
-  await call("/api/auth/request-password-reset", { body: { email, redirectTo: "/" } }),
+  await call("/api/auth/request-password-reset", { body: { email, redirectTo: "/reset-password" } }),
   200,
 );
 const reset = await check(await call(await mailLink("重置密码", resetLog.length)), 302);
-const resetToken = new URL(reset.headers.get("location"), origin).searchParams.get("token");
+const resetLocation = new URL(reset.headers.get("location"), origin);
+assert.equal(resetLocation.pathname, "/reset-password");
+const resetToken = resetLocation.searchParams.get("token");
 assert.ok(resetToken);
 const newPassword = `Reset-${crypto.randomUUID()}`;
 await check(
   await call("/api/auth/reset-password", { body: { token: resetToken, newPassword } }),
   200,
+);
+await check(
+  await call("/api/auth/reset-password", { body: { token: resetToken, newPassword } }),
+  400,
 );
 await check(await call("/api/account", { headers: webHeaders }), 401);
 const resetHeaders = { "cf-connecting-ip": clientIp.replace("198.18.", "198.19.") };

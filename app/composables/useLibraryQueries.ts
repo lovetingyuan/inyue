@@ -1,12 +1,11 @@
-import { useInfiniteQuery, useQuery, useQueryCache, useQueryState } from "@pinia/colada";
-import type { MediaAuthorization, Playlist, SongDetails, SongPage } from "~~/shared/types/library";
+import { useInfiniteQuery, useQuery, useQueryState } from "@pinia/colada";
+import type { MediaAuthorization, Playlist, Song, SongDetails, SongPage } from "~~/shared/types/library";
 import { libraryKeys } from "~/utils/music-query-keys";
 
 export function useLibraryQueries() {
   const session = useSessionStore();
   const library = useLibraryStore();
   const app = useAppStore();
-  const cache = useQueryCache();
   const { request } = useMusicApi();
   const enabled = () => Boolean(session.userId) && !app.offline;
   const songs = useInfiniteQuery<SongPage, Error, number>(
@@ -15,12 +14,15 @@ export function useLibraryQueries() {
       return {
         key: [...libraryKeys.songs(session.userId), "pages", filters],
         enabled: enabled(),
+        // Retry the failed page request instead of refetching the loaded pages.
+        retry: 0,
         initialPageParam: 0,
         query: async ({ pageParam, signal }) => {
           const { _data } = await request<SongPage>(
             "/api/songs",
             {
               query: { ...filters, offset: pageParam },
+              retry: 1,
               signal,
             },
           );
@@ -47,26 +49,16 @@ export function useLibraryQueries() {
   });
   const player = usePlayerStore();
 
-  function play(songId: string) {
-    const { userId } = session;
+  function play(song: Song, coverUrl: string | null) {
     const { filters } = library;
-    return player.play(async () => {
-      const entry = cache.ensure({
-        key: [...libraryKeys.songs(userId), "ids", filters],
-        query: async ({ signal }) => {
-          const { _data } = await request<{ ids: string[] }>("/api/songs", {
-            query: { ...filters, ids: true },
-            signal,
-          });
-          return _data?.ids ?? [];
-        },
+    return player.play({ ...song, coverUrl }, async (signal) => {
+      const { _data } = await request<{ ids: string[] }>("/api/songs", {
+        query: { ...filters, ids: true },
+        retry: 1,
+        signal,
       });
-      try {
-        return (await cache.fetch(entry)).data ?? [];
-      } finally {
-        cache.remove(entry);
-      }
-    }, songId);
+      return _data?.ids ?? [];
+    });
   }
 
   return { songs, playlists, play };
@@ -113,6 +105,7 @@ export function useCoverQuery(ids: () => readonly string[]) {
     return {
       key: coverKey(session.userId, list),
       enabled: Boolean(session.userId && list.length) && !app.offline,
+      retry: 0,
       staleTime: 60 * 60 * 1000,
       query: async ({ signal }) => {
         const covers: Record<string, string> = {};
