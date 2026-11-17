@@ -3,11 +3,14 @@ import {
   createError,
   defineEventHandler,
   getRequestHeader,
+  getRequestHost,
+  getRequestURL,
   sendNoContent,
+  sendRedirect,
   setResponseHeaders,
 } from "h3";
 import { hasAccountMail } from "../utils/account-mail";
-import { devOrigin } from "~~/shared/dev-server.mjs";
+import { devOrigin, devPort } from "~~/shared/dev-server.mjs";
 
 const mailPaths = new Set([
   "/api/auth/sign-up/email",
@@ -16,8 +19,22 @@ const mailPaths = new Set([
 ]);
 
 export default defineEventHandler((event) => {
-  if (import.meta.dev) useRuntimeConfig(event).public.siteUrl = devOrigin;
-  if (!event.path.startsWith("/api/")) return;
+  const apiRequest = event.path.startsWith("/api/");
+  if (import.meta.dev) {
+    if (
+      !apiRequest &&
+      (event.method === "GET" || event.method === "HEAD") &&
+      getRequestHost(event).toLowerCase() === `localhost:${devPort}`
+    ) {
+      const { pathname, search } = getRequestURL(event);
+      const target = new URL(devOrigin);
+      target.pathname = pathname;
+      target.search = search;
+      return sendRedirect(event, target.href);
+    }
+    useRuntimeConfig(event).public.siteUrl = devOrigin;
+  }
+  if (!apiRequest) return;
   const config = useRuntimeConfig(event);
   const origin = getRequestHeader(event, "origin");
   const siteOrigin = config.public.siteUrl ? new URL(config.public.siteUrl).origin : "";

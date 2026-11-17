@@ -4,7 +4,7 @@
 
 @layer focus-reset {
   * {
-    outline-offset: 0 !important;
+    outline-offset: var(--focus-outline-offset, 0px) !important;
   }
 
   :focus,

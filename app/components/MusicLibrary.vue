@@ -276,7 +276,7 @@ onBeforeUnmount(() => {
             ><span class="w-[24%]">专辑</span>
             <Clock class="mr-12 size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
           </div>
-          <ul class="grid">
+          <ul class="grid grid-cols-1">
             <li
               v-for="(song, index) in songs"
               :key="song.id"
@@ -284,7 +284,7 @@ onBeforeUnmount(() => {
               :class="current?.id === song.id ? 'bg-primary/8' : 'hover:bg-base-200/70'"
             >
               <button
-                class="group flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-field py-2 pr-1 pl-2 text-left lg:pr-3 lg:pl-3"
+                class="group relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-field py-2 pr-1 pl-2 text-left lg:pr-3 lg:pl-3"
                 :aria-label="`播放 ${song.title}`"
                 :aria-current="current?.id === song.id ? 'true' : undefined"
                 :disabled="app.offline && !offlineAudio?.has(song.id)"
@@ -296,21 +296,24 @@ onBeforeUnmount(() => {
                 @click="play(song)"
               >
                 <span
-                  class="relative grid w-6 shrink-0 place-items-center text-center text-xs tabular-nums"
+                  class="pointer-events-none absolute left-2 z-10 grid size-10 shrink-0 place-items-center rounded-[18%] text-center text-xs tabular-nums sm:relative sm:left-auto sm:size-auto sm:w-6"
+                  :class="current?.id === song.id && (playbackLoading || playing)
+                    ? 'max-sm:bg-neutral/70'
+                    : 'max-sm:opacity-0 max-sm:group-hover:bg-neutral/70 max-sm:group-hover:opacity-100'"
                   aria-hidden="true"
                 >
                   <LoaderCircle
                     v-if="playbackLoading && current?.id === song.id"
-                    class="size-4 animate-spin text-primary"
+                    class="size-4 animate-spin text-neutral-content sm:text-primary"
                   />
                   <Signal
                     v-else-if="playing && current?.id === song.id"
-                    class="playing-bars size-4 text-primary"
+                    class="playing-bars size-4 text-neutral-content sm:text-primary"
                   />
                   <template v-else
-                    ><span class="text-base-content/55 group-hover:opacity-0">{{ index + 1 }}</span
+                    ><span class="hidden text-base-content/55 group-hover:opacity-0 sm:block">{{ index + 1 }}</span
                     ><Play
-                      class="absolute size-4 opacity-0 group-hover:opacity-100 shrink-0"
+                      class="absolute size-4 shrink-0 text-neutral-content sm:text-base-content sm:opacity-0 sm:group-hover:opacity-100"
                       :stroke-width="1.8"
                       aria-hidden="true"
                       fill="currentColor"
@@ -336,7 +339,7 @@ onBeforeUnmount(() => {
                   song.album || "—"
                 }}</span>
                 <span
-                  class="grid min-w-8 shrink-0 justify-items-end text-xs text-base-content/65 tabular-nums"
+                  class="hidden min-w-8 shrink-0 justify-items-end text-xs text-base-content/65 tabular-nums sm:grid"
                 >
                   <span v-if="song.duration != null">{{
                     formatMusicTime(song.duration)

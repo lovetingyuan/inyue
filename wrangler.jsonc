@@ -44,10 +44,16 @@
       "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "inyue" }],
       "vars": {
         "NUXT_PUBLIC_SITE_URL": "https://inyue.tingyuan.nz",
+        "NUXT_PUBLIC_GOOGLE_CLIENT_ID": "262526689924-vhp43um1207tumj0m0k0uuh6k3s9iami.apps.googleusercontent.com",
         "NUXT_MAIL_FROM": "inyue@inyue.tingyuan.nz",
       },
       "secrets": {
-        "required": ["NUXT_BETTER_AUTH_SECRET", "NUXT_MEDIA_SIGNING_SECRET", "NUXT_RESEND_API_KEY"],
+        "required": [
+          "NUXT_BETTER_AUTH_SECRET",
+          "NUXT_MEDIA_SIGNING_SECRET",
+          "NUXT_RESEND_API_KEY",
+          "NUXT_GOOGLE_CLIENT_SECRET",
+        ],
       },
     },
   },

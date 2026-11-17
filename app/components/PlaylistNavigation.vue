@@ -20,7 +20,7 @@ async function select(id: string) {
 
 <template>
   <div
-    class="grid grid-cols-1 content-start gap-1 [&_button:active]:translate-none [&_button:focus-visible]:-outline-offset-2"
+    class="grid grid-cols-1 content-start gap-1 [&_button:active]:translate-none [&_button:focus-visible]:[--focus-outline-offset:-2px]"
   >
     <button
       type="button"
