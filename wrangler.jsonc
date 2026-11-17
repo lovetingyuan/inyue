@@ -45,7 +45,7 @@
       "vars": {
         "NUXT_PUBLIC_SITE_URL": "https://inyue.tingyuan.nz",
         "NUXT_PUBLIC_GOOGLE_CLIENT_ID": "262526689924-vhp43um1207tumj0m0k0uuh6k3s9iami.apps.googleusercontent.com",
-        "NUXT_MAIL_FROM": "inyue@inyue.tingyuan.nz",
+        "NUXT_MAIL_FROM": "inYue <noreply@inyue.tingyuan.nz>",
       },
       "secrets": {
         "required": [

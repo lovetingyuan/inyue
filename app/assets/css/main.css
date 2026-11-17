@@ -7,12 +7,12 @@
     outline-offset: var(--focus-outline-offset, 0px) !important;
   }
 
-  :focus,
-  :focus-within {
+  :focus {
     outline-color: color-mix(in oklab, var(--color-primary) 65%, transparent) !important;
   }
 
   :is(.input, .textarea, .select, .file-input, .checkbox, .radio, .toggle, .range):focus-within {
+    outline-color: color-mix(in oklab, var(--color-primary) 65%, transparent) !important;
     border-color: var(--color-primary) !important;
   }
 }

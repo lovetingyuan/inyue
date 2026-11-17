@@ -43,11 +43,13 @@ const deleting = ref<"song" | "playlist">();
 const playlistName = ref("");
 const playlistEdit = ref<Playlist>();
 const playlistCover = shallowRef<File>();
-const playlistCoverInput = useTemplateRef<HTMLInputElement>("playlistCoverInput");
 const playlistCoverPreview = useObjectUrl(() =>
-  panel.value === "playlist" && playlistEdit.value ? playlistCover.value : undefined,
+  panel.value === "playlist" ? playlistCover.value : undefined,
 );
 const removeCover = ref(false);
+const hasPlaylistCover = computed(
+  () => Boolean(playlistCover.value || (playlistEdit.value?.coverId && !removeCover.value)),
+);
 const playlistSave = usePlaylistSave();
 const libraryDelete = useLibraryDelete();
 const pending = computed(() => playlistSave.isLoading.value || libraryDelete.isLoading.value);
@@ -123,7 +125,6 @@ function clearPlaylistCover() {
   playlistCover.value = undefined;
   removeCover.value = Boolean(playlistEdit.value?.coverId);
   playlistErrors.cover = "";
-  if (playlistCoverInput.value) playlistCoverInput.value.value = "";
 }
 
 async function update(action: () => Promise<void>) {
@@ -262,7 +263,9 @@ onBeforeUnmount(() => {
             :stroke-width="1.8"
             aria-hidden="true"
           />
-          <p>{{ app.offline ? "没有符合条件的已缓存歌曲" : term ? "没有匹配的歌曲" : "这个歌单还没有歌曲" }}</p>
+          <p v-if="app.offline">没有符合条件的已缓存歌曲</p>
+          <p v-else-if="term">没有匹配的歌曲</p>
+          <p v-else>{{ playlist ? "这个歌单还没有歌曲" : "暂无歌曲" }}</p>
           <!-- <NuxtLink v-if="!term" to="/songs/new" class="btn btn-ghost btn-sm text-primary"
             >新增歌曲</NuxtLink
           > -->
@@ -421,15 +424,13 @@ onBeforeUnmount(() => {
             </p>
           </div>
           <div class="grid gap-1">
-            <label :for="`${playlistFieldId}-cover`">封面</label>
-            <div
-              v-if="playlistEdit && (playlistCover || (playlistEdit.coverId && !removeCover))"
-              class="relative w-fit"
-            >
+            <span v-if="hasPlaylistCover">封面</span>
+            <label v-else :for="`${playlistFieldId}-cover`">封面</label>
+            <div v-if="hasPlaylistCover" class="relative w-fit">
               <MusicArtwork
                 :src="
                   playlistCoverPreview ??
-                  (playlistEdit.coverId ? coverUrls[playlistEdit.coverId] : undefined)
+                  (playlistEdit?.coverId ? coverUrls[playlistEdit.coverId] : undefined)
                 "
                 class="w-28"
               />
@@ -444,8 +445,8 @@ onBeforeUnmount(() => {
               </button>
             </div>
             <input
+              v-else
               :id="`${playlistFieldId}-cover`"
-              ref="playlistCoverInput"
               class="file-input validator w-full"
               type="file"
               accept="image/jpeg,image/png,image/webp"
