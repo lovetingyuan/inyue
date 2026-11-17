@@ -66,6 +66,16 @@ npm run android -- --target <ID>
 
 保持开发服务所在的终端运行，按 Ctrl+C 停止。原生代码或插件变更后重新运行 `npm run android`。在电脑 Chrome 打开 `chrome://inspect/#devices`，点击应用 WebView 的 **inspect** 调试。
 
+### 正式环境 APK
+
+运行以下命令生成连接正式 API `https://inyue.tingyuan.nz` 的独立 APK：
+
+```powershell
+npm run build:android
+```
+
+命令使用现有 Debug 签名，不会启动开发服务或安装应用。产物位于 `android/app/build/outputs/apk/debug/app-debug.apk`，可运行 `adb install -r android/app/build/outputs/apk/debug/app-debug.apk` 安装。热更新调试仍使用 `npm run android`。
+
 若默认 Java 是 17，可在 PowerShell 中临时切换到已安装的 JDK 21：
 
 ```powershell

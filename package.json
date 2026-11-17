@@ -13,6 +13,7 @@
   "scripts": {
     "dev": "nuxt dev --host 127.0.0.1 --port 5223 --strictPort --no-takeover",
     "android": "node scripts/android-dev.mjs",
+    "build:android": "node scripts/build-android.mjs",
     "android:devices": "cap run android --list",
     "start": "npm run dev --",
     "build": "nuxt build",
