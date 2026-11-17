@@ -15,6 +15,7 @@ export const usePlayerStore = defineStore("player", () => {
   const tracks = shallowRef<Track[]>([]);
   const ids = ref<string[]>([]);
   const order = ref<string[]>([]);
+  const queueSource = ref("");
   const id = ref("");
   const position = ref(0);
   const mode = ref<PlaybackMode>("sequential");
@@ -50,7 +51,7 @@ export const usePlayerStore = defineStore("player", () => {
     return `music-playback:${userId}`;
   }
 
-  watch([ids, order, id, position, mode, volume], () => {
+  watch([ids, order, queueSource, id, position, mode, volume], () => {
     if (!import.meta.client || !owner || owner !== requestedOwner || !ids.value.length) return;
     const snapshot: PlaybackSnapshot = {
       ids: ids.value,
@@ -59,6 +60,7 @@ export const usePlayerStore = defineStore("player", () => {
       position: position.value,
       mode: mode.value,
       volume: volume.value,
+      queueKey: queueSource.value,
     };
     try {
       localStorage.setItem(storageKey(owner), JSON.stringify(snapshot));
@@ -79,6 +81,20 @@ export const usePlayerStore = defineStore("player", () => {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     if (artworkUrl) URL.revokeObjectURL(artworkUrl);
     audioUrl = artworkUrl = undefined;
+  }
+
+  function mediaUrlIsFresh(url: string) {
+    try {
+      const source = new URL(url);
+      const expires = Number(source.searchParams.get("expires"));
+      return (
+        /^\/api\/media\/[\da-f-]{36}$/.test(source.pathname) &&
+        Number.isFinite(expires) &&
+        expires > Date.now() + 30_000
+      );
+    } catch {
+      return false;
+    }
   }
 
   async function cachePlayingTrack(track: Track) {
@@ -223,7 +239,7 @@ export const usePlayerStore = defineStore("player", () => {
       const media = scope ? await import("~/utils/offline-media") : undefined;
       const local = scope && await media?.readOfflineMedia(scope, "audio", track.id);
       let source = local ? "" : track.url;
-      if (!local && !app.offline && !source) {
+      if (!local && !app.offline && !mediaUrlIsFresh(source)) {
         const [remote] = await authorize([track.id]);
         source = remote?.url ?? "";
         if (remote) tracks.value = tracks.value.map((item) => item.id === track.id ? remote : item);
@@ -278,6 +294,15 @@ export const usePlayerStore = defineStore("player", () => {
     return [selected, ...remaining];
   }
 
+  function canReuseQueue(selected: string, sourceKey?: string) {
+    return Boolean(
+      sourceKey &&
+        sourceKey === queueSource.value &&
+        ids.value.includes(selected) &&
+        tracks.value.some((track) => track.id === selected),
+    );
+  }
+
   async function authorize(list: string[], controller = new AbortController()) {
     const { signal } = controller;
     authorization = controller;
@@ -304,6 +329,7 @@ export const usePlayerStore = defineStore("player", () => {
     autoplay: boolean,
     snapshot?: PlaybackSnapshot,
     controller?: AbortController,
+    sourceKey: string | undefined = queueSource.value,
   ) {
     const userId = owner;
     const generation = ownerRevision;
@@ -337,6 +363,7 @@ export const usePlayerStore = defineStore("player", () => {
     }
     tracks.value = authorized;
     ids.value = valid;
+    queueSource.value = sourceKey ?? "";
     mode.value = snapshot?.mode ?? mode.value;
     if (mode.value === "loop" && valid.length < 2) mode.value = "sequential";
     const next = available.has(selected) ? selected : valid[0];
@@ -364,11 +391,12 @@ export const usePlayerStore = defineStore("player", () => {
       typeof snapshot.id !== "string" ||
       !Number.isFinite(snapshot.position) ||
       !Number.isFinite(snapshot.volume) ||
-      !["loop", "shuffle", "sequential"].includes(snapshot.mode)
+      !["loop", "shuffle", "sequential"].includes(snapshot.mode) ||
+      (snapshot.queueKey !== undefined && typeof snapshot.queueKey !== "string")
     )
       return;
     volume.value = Math.max(0, Math.min(1, snapshot.volume));
-    await setQueue(snapshot.ids, snapshot.id, false, snapshot);
+    await setQueue(snapshot.ids, snapshot.id, false, snapshot, undefined, snapshot.queueKey);
   }
 
   async function toggle() {
@@ -444,14 +472,22 @@ export const usePlayerStore = defineStore("player", () => {
       await restore();
       return;
     }
-    await setQueue(ids.value, id.value, true, {
-      ids: ids.value,
-      order: order.value,
-      id: id.value,
-      position: position.value,
-      volume: volume.value,
-      mode: mode.value,
-    });
+    await setQueue(
+      ids.value,
+      id.value,
+      true,
+      {
+        ids: ids.value,
+        order: order.value,
+        id: id.value,
+        position: position.value,
+        volume: volume.value,
+        mode: mode.value,
+        queueKey: queueSource.value,
+      },
+      undefined,
+      queueSource.value,
+    );
   }
 
   async function clearQueue() {
@@ -471,6 +507,7 @@ export const usePlayerStore = defineStore("player", () => {
     tracks.value = [];
     ids.value = [];
     order.value = [];
+    queueSource.value = "";
     id.value = "";
     position.value = 0;
     playing.value = false;
@@ -500,7 +537,10 @@ export const usePlayerStore = defineStore("player", () => {
         position: selected ? 0 : position.value,
         volume: volume.value,
         mode: mode.value,
+        queueKey: queueSource.value,
       },
+      undefined,
+      queueSource.value,
     );
   }
 
@@ -585,7 +625,11 @@ export const usePlayerStore = defineStore("player", () => {
     }
   });
 
-  async function play(track: Omit<Track, "url">, loadIds: (signal: AbortSignal) => Promise<string[]>) {
+  async function play(
+    track: Omit<Track, "url">,
+    loadIds: (signal: AbortSignal) => Promise<string[]>,
+    options?: { queueKey?: string },
+  ) {
     if (!requestedOwner) return;
     selection?.abort();
     const controller = new AbortController();
@@ -599,9 +643,13 @@ export const usePlayerStore = defineStore("player", () => {
       await run(async () => {
         await player?.pause();
         if (signal.aborted) return;
+        if (canReuseQueue(track.id, options?.queueKey)) {
+          await load(track.id, 0, true, signal);
+          return;
+        }
         const list = await loadIds(signal);
         if (signal.aborted) return;
-        await setQueue(list, track.id, true, undefined, controller);
+        await setQueue(list, track.id, true, undefined, controller, options?.queueKey);
       }, signal);
     } finally {
       if (selection === controller) {
@@ -636,5 +684,8 @@ export const usePlayerStore = defineStore("player", () => {
     setMode: (value: PlaybackMode) => run(() => setMode(value)),
     refresh: () => run(refresh),
     remove: (trackId: string) => run(() => remove(trackId)),
+    invalidateQueue() {
+      queueSource.value = "";
+    },
   };
 });

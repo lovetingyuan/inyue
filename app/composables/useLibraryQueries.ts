@@ -105,18 +105,28 @@ export function useLibraryQueries() {
   function play(song: Song, coverUrl: string | null) {
     const { filters } = library;
     const scope = session.offlineScope;
-    return player.play({ ...song, coverUrl }, async (signal) => {
-      if (app.offline && scope) {
-        const { readOfflineSongs } = await import("~/utils/offline-library");
-        return (await readOfflineSongs(scope, filters)).map(({ id }) => id);
-      }
-      const { _data } = await request<{ ids: string[] }>("/api/songs", {
-        query: { ...filters, ids: true },
-        retry: 1,
-        signal,
-      });
-      return _data?.ids ?? [];
-    });
+    const queueKey = JSON.stringify([
+      "songs",
+      app.offline ? "offline" : "online",
+      filters.playlist,
+      filters.q,
+    ]);
+    return player.play(
+      { ...song, coverUrl },
+      async (signal) => {
+        if (app.offline && scope) {
+          const { readOfflineSongs } = await import("~/utils/offline-library");
+          return (await readOfflineSongs(scope, filters)).map(({ id }) => id);
+        }
+        const { _data } = await request<{ ids: string[] }>("/api/songs", {
+          query: { ...filters, ids: true },
+          retry: 1,
+          signal,
+        });
+        return _data?.ids ?? [];
+      },
+      { queueKey },
+    );
   }
 
   return { songs, playlists, play };

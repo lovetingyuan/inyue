@@ -61,4 +61,5 @@ export interface PlaybackSnapshot {
   position: number;
   mode: PlaybackMode;
   volume: number;
+  queueKey?: string;
 }

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { lstatSync, readlinkSync, unlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
@@ -9,6 +10,19 @@ import { defaultQuotaBytes } from "./shared/library-limits";
 
 const require = createRequire(import.meta.url);
 const nitroRoot = dirname(require.resolve("nitropack/package.json"));
+
+function getGitHash() {
+  try {
+    return execFileSync("git", ["rev-parse", "--short", "HEAD"], {
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+const buildTime = process.env.VITE_BUILD_TIME || Date.now().toString();
+const buildHash = process.env.VITE_GIT_HASH || getGitHash();
 
 export default defineNuxtConfig({
   telemetry: false,
@@ -22,6 +36,11 @@ export default defineNuxtConfig({
     head: {
       title: "inYue",
       viewport: "width=device-width, initial-scale=1.0, viewport-fit=cover",
+      script: [
+        {
+          src: `/build-info.js?time=${buildTime}&hash=${encodeURIComponent(buildHash)}`,
+        },
+      ],
       link: [
         { rel: "icon", type: "image/x-icon", href: "/favicon.ico" },
         { rel: "icon", type: "image/svg+xml", sizes: "any", href: "/assets/icon/inyue.svg" },
