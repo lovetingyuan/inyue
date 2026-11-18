@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AudioLines, Clock, Ellipsis, LoaderCircle, Music, Play, Search, Signal, X } from "@lucide/vue";
+import { Clock, Ellipsis, LoaderCircle, Music, Play, Search, Signal, X } from "@lucide/vue";
 import { useObjectUrl } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import { coverMaxBytes } from "~~/shared/library-limits";
@@ -236,20 +236,24 @@ onBeforeUnmount(() => {
             />
           </button>
         </div>
-        <p
-          v-if="loading && !songs.length"
-          role="status"
-          class="grid min-h-36 flex-1 place-content-center justify-items-center gap-3 py-4 text-center text-sm font-medium text-base-content/70"
-        >
-          <span
-            class="grid size-16 place-items-center rounded-full bg-radial from-primary/16 to-primary/5 text-primary ring-1 ring-primary/15"
-            aria-hidden="true"
-          >
-            <span class="loading loading-bars loading-md motion-reduce:hidden" />
-            <AudioLines class="hidden size-6 motion-reduce:block" :stroke-width="1.8" />
-          </span>
-          加载歌曲…
-        </p>
+        <div v-if="loading && !songs.length" role="status" class="mt-4 lg:pt-6">
+          <span class="sr-only">加载歌曲…</span>
+          <div aria-hidden="true">
+            <div v-for="row in 6" :key="row" class="flex items-center gap-3 py-2 pr-4 pl-2 lg:pl-3">
+              <span class="skeleton hidden h-3 w-6 shrink-0 sm:block" />
+              <span class="skeleton size-10 shrink-0 rounded-[18%]" />
+              <div class="min-w-0 flex-1 space-y-2">
+                <span class="skeleton block h-3 w-3/4 max-w-40" />
+                <span class="skeleton block h-2.5 w-1/2 max-w-24" />
+              </div>
+              <div class="hidden w-1/4 lg:block">
+                <span class="skeleton block h-3 w-2/3 max-w-28" />
+              </div>
+              <span class="skeleton mr-2 hidden h-3 w-8 shrink-0 sm:block" />
+              <span class="skeleton size-4 shrink-0 rounded-full" />
+            </div>
+          </div>
+        </div>
         <div v-else-if="error" class="alert alert-error alert-soft mt-4" role="alert">
           {{ error }} <button class="btn btn-sm" @click="retryLibrary">重试</button>
         </div>
