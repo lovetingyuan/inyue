@@ -1,5 +1,6 @@
 import type { PluginListenerHandle } from "@capacitor/core";
 import type { PlaylistPlugin } from "@dwbn/capacitor-plugin-playlist";
+import { useDocumentVisibility, useIntervalFn } from "@vueuse/core";
 import { defineStore } from "pinia";
 import type {
   MediaAuthorization,
@@ -12,12 +13,14 @@ import type {
 export const usePlayerStore = defineStore("player", () => {
   const { native, request } = useMusicApi();
   const app = useAppStore();
+  const visibility = useDocumentVisibility();
   const tracks = shallowRef<Track[]>([]);
   const ids = ref<string[]>([]);
   const order = ref<string[]>([]);
   const queueSource = ref("");
   const id = ref("");
   const position = ref(0);
+  const sampledPosition = ref<number>();
   const mode = ref<PlaybackMode>("sequential");
   const volume = ref(1);
   const playing = ref(false);
@@ -33,19 +36,59 @@ export const usePlayerStore = defineStore("player", () => {
   });
   let player: PlaylistPlugin | undefined;
   let listener: PluginListenerHandle | undefined;
+  let nativeProgress: { getProgress(): Promise<{ trackId?: string; position?: number }> } | undefined;
+  let nativeRead: Promise<void> | undefined;
+  const nativeLoadTarget = ref("");
+  const nativeSeeking = ref(false);
   let audio: HTMLAudioElement | undefined;
   let webPlayback: Promise<void> | undefined;
   let owner = "";
   let requestedOwner = "";
   let ownerRevision = 0;
   let operations = Promise.resolve();
-  let nativeLoadTarget = "";
   let authorization: AbortController | undefined;
   let selection: AbortController | undefined;
   let mediaWrites: AbortController | undefined;
   let audioUrl: string | undefined;
   let artworkUrl: string | undefined;
   let savingTrack = "";
+
+  function readNativeProgress() {
+    if (nativeRead) return nativeRead;
+    if (
+      !nativeProgress || visibility.value !== "visible" || !id.value || owner !== requestedOwner ||
+      pendingTrack.value || nativeLoadTarget.value || nativeSeeking.value
+    ) return;
+    const trackId = id.value;
+    const revision = ownerRevision;
+    const read = nativeProgress.getProgress()
+      .then((sample) => {
+        if (nativeRead !== read || revision !== ownerRevision || trackId !== id.value) return;
+        sampledPosition.value = sample.trackId === trackId ? sample.position : undefined;
+      })
+      .catch(() => {
+        if (nativeRead === read) sampledPosition.value = undefined;
+      })
+      .finally(() => {
+        if (nativeRead === read) nativeRead = undefined;
+      });
+    nativeRead = read;
+    return read;
+  }
+
+  const { pause: stopProgressSampling, resume: startProgressSampling } = useIntervalFn(
+    readNativeProgress, 100, { immediate: false },
+  );
+  watch(
+    [id, playing, pendingTrack, visibility, nativeLoadTarget, nativeSeeking],
+    () => {
+      nativeRead = undefined;
+      sampledPosition.value = undefined;
+      stopProgressSampling();
+      if (readNativeProgress() && playing.value) startProgressSampling();
+    },
+    { flush: "sync" },
+  );
 
   function storageKey(userId: string) {
     return `music-playback:${userId}`;
@@ -132,13 +175,17 @@ export const usePlayerStore = defineStore("player", () => {
       if (status.msgType === eventType.RMXSTATUS_STOPPED) loading.value = false;
       if (status.value && "currentPosition" in status.value) {
         // Android can report the first track while replacing the native queue.
-        if (nativeLoadTarget && status.trackId !== nativeLoadTarget) return;
+        if (nativeLoadTarget.value && status.trackId !== nativeLoadTarget.value) return;
         if (order.value.includes(status.trackId)) id.value = status.trackId;
         position.value = status.value.currentPosition;
         playing.value = status.value.status === "playing";
         loading.value = status.value.status === "loading";
       }
     });
+
+    const { Capacitor, registerPlugin } = await import("@capacitor/core");
+    if (Capacitor.isPluginAvailable("PlaybackProgress"))
+      nativeProgress = registerPlugin<NonNullable<typeof nativeProgress>>("PlaybackProgress");
   }
 
   function webAudio() {
@@ -206,14 +253,14 @@ export const usePlayerStore = defineStore("player", () => {
   async function load(selected: string, time: number, autoplay: boolean, signal?: AbortSignal) {
     const track = tracks.value.find(({ id }) => id === selected);
     if (!track) return;
+    if (native) nativeLoadTarget.value = selected;
     id.value = selected;
     position.value = time;
     if (native) {
-      await initializeNative();
-      const output = player;
-      if (owner !== requestedOwner || signal?.aborted || !output) return;
-      nativeLoadTarget = selected;
       try {
+        await initializeNative();
+        const output = player;
+        if (owner !== requestedOwner || signal?.aborted || !output) return;
         await output.setLoop({ loop: mode.value === "loop" && order.value.length > 1 });
         await output.setPlaylistItems({
           items: queue.value.map(({ id, url, title, artist, album, coverUrl }) => ({
@@ -231,7 +278,7 @@ export const usePlayerStore = defineStore("player", () => {
         if (autoplay) await output.playTrackById({ id: selected, position: time });
         else await output.selectTrackById({ id: selected, position: time });
       } finally {
-        nativeLoadTarget = "";
+        nativeLoadTarget.value = "";
       }
     } else {
       const revision = ownerRevision;
@@ -432,9 +479,23 @@ export const usePlayerStore = defineStore("player", () => {
 
   async function seek(time: number) {
     if (!Number.isFinite(time) || time < 0) return;
-    if (player) await player.seekTo({ position: time });
-    else if (audio) audio.currentTime = time;
-    position.value = time;
+    if (player) {
+      nativeSeeking.value = true;
+      try {
+        await player.seekTo({ position: time });
+        if (!nativeProgress || visibility.value !== "visible") position.value = time;
+      } finally {
+        nativeSeeking.value = false;
+      }
+      const revision = ownerRevision;
+      const trackId = id.value;
+      await readNativeProgress();
+      if (revision === ownerRevision && trackId === id.value && sampledPosition.value !== undefined)
+        position.value = sampledPosition.value;
+    } else if (audio) {
+      audio.currentTime = time;
+      position.value = audio.currentTime;
+    }
   }
 
   async function setVolume(value: number) {
@@ -548,6 +609,7 @@ export const usePlayerStore = defineStore("player", () => {
     const output = player;
     const statusListener = listener;
     listener = undefined;
+    nativeProgress = undefined;
     player = undefined;
     if (audio) {
       audio.ontimeupdate = audio.onplay = audio.onpause = audio.onended = audio.onerror = null;
@@ -666,7 +728,7 @@ export const usePlayerStore = defineStore("player", () => {
     id,
     current,
     queue,
-    position: computed(() => (pendingTrack.value ? 0 : position.value)),
+    position: computed(() => (pendingTrack.value ? 0 : (sampledPosition.value ?? position.value))),
     mode,
     volume,
     playing: computed(() => !pendingTrack.value && playing.value),
@@ -674,6 +736,7 @@ export const usePlayerStore = defineStore("player", () => {
     error,
     setOwner,
     play,
+    playQueuedTrack: (trackId: string) => run(() => load(trackId, 0, true)),
     toggle: () => run(toggle),
     step: (direction: number) => run(() => step(direction)),
     seek: (time: number) => run(() => seek(time)),

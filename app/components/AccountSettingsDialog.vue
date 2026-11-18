@@ -137,7 +137,7 @@ defineExpose({
             </div>
             <button
               type="button"
-              class="btn btn-error btn-outline btn-sm shrink-0"
+              class="btn btn-error btn-ghost btn-xs shrink-0 font-normal"
               :disabled="session.signingOut || offline"
               @click="logoutConfirm?.open()"
             >

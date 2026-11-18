@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { AudioLines, X } from "@lucide/vue";
+import { X } from "@lucide/vue";
 import type { Track } from "~~/shared/types/library";
 
 defineOptions({ name: "PlaybackQueueDialog" });
-defineProps<{ queue: Track[]; currentTrackId?: string }>();
+defineProps<{ queue: Track[]; currentTrackId?: string; playing: boolean }>();
+const emit = defineEmits<{ play: [trackId: string] }>();
 
 const dialog = useTemplateRef("dialog");
 
@@ -19,7 +20,7 @@ defineExpose({
       class="modal-box safe-panel grid max-h-[75dvh] grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden"
     >
       <div class="flex items-center justify-between gap-2">
-        <h2 id="queue-title" class="text-xl font-bold">
+        <h2 id="queue-title" class="text-lg font-bold">
           播放队列
           <span class="text-sm font-medium text-base-content/65">{{ queue.length }} 首</span>
         </h2>
@@ -30,24 +31,24 @@ defineExpose({
         </form>
       </div>
       <ol class="grid content-start overflow-y-auto">
-        <li
-          v-for="item in queue"
-          :key="item.id"
-          class="flex items-center gap-3 rounded-field p-2"
-          :aria-current="item.id === currentTrackId ? 'true' : undefined"
-          :class="{ 'bg-primary/10': item.id === currentTrackId }"
-        >
-          <MusicArtwork :src="item.coverUrl" class="w-9" />
-          <span class="min-w-0 flex-1">
-            <span class="block truncate text-sm font-semibold">{{ item.title }}</span>
-            <span class="block truncate text-xs text-base-content/65">{{ item.artist }}</span>
-          </span>
-          <AudioLines
-            v-if="item.id === currentTrackId"
-            class="size-4 text-primary shrink-0"
-            :stroke-width="1.8"
-            aria-hidden="true"
-          />
+        <li v-for="item in queue" :key="item.id" class="min-w-0">
+          <button
+            type="button"
+            class="btn btn-ghost flex h-auto w-full gap-3 p-2 text-left focus-visible:-outline-offset-2"
+            :aria-current="item.id === currentTrackId ? 'true' : undefined"
+            :class="{ 'bg-primary/10': item.id === currentTrackId }"
+            @click="emit('play', item.id)"
+          >
+            <MusicArtwork :src="item.coverUrl" class="w-9" />
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-semibold">{{ item.title }}</span>
+              <span class="block truncate text-xs font-normal text-base-content/65">{{ item.artist }}</span>
+            </span>
+            <PlayingBars
+              v-if="playing && item.id === currentTrackId"
+              class="size-4 shrink-0 text-primary mr-1"
+            />
+          </button>
         </li>
       </ol>
     </div>

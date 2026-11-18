@@ -2,18 +2,22 @@
 import { ListPlus, Pencil, Trash2, X } from "@lucide/vue";
 import type { Song } from "~~/shared/types/library";
 
-const { data: song, error: queryError, asyncStatus } = useSongDetailsState();
+const props = defineProps<{ initialSong: Song; initialCoverUrl?: string }>();
+const { data: details, error: queryError, asyncStatus } = useSongDetailsState();
+const song = computed(() => details.value ?? props.initialSong);
 const app = useAppStore();
-const covers = useCoverQuery(() => (song.value?.coverId ? [song.value.coverId] : []));
-const coverUrl = computed(() =>
-  song.value?.coverId ? covers.urls.value[song.value.coverId] : undefined,
-);
+const covers = useCoverQuery(() => (song.value.coverId ? [song.value.coverId] : []));
+const coverUrl = computed(() => {
+  const id = song.value.coverId;
+  if (!id) return;
+  return covers.urls.value[id] ?? (id === props.initialSong.coverId ? props.initialCoverUrl : undefined);
+});
 const loading = computed(
-  () => !song.value && (!queryError.value || asyncStatus.value === "loading"),
+  () => !details.value && (!queryError.value || asyncStatus.value === "loading"),
 );
 const error = computed(() => (queryError.value ? app.offline ? "歌曲详情尚未缓存。" : libraryError(queryError.value) : ""));
 const albumAndYear = computed(() => {
-  const { album, year } = song.value ?? {};
+  const { album, year } = song.value;
   return [album, year ? `${year}年` : ""].filter(Boolean).join(" · ");
 });
 const emit = defineEmits<{ close: []; edit: [Song]; delete: []; playlists: [] }>();
@@ -29,12 +33,11 @@ const playlistButton = useTemplateRef("playlistButton");
         type="button"
         class="btn btn-ghost btn-circle absolute top-2 right-2"
         aria-label="关闭歌曲详情"
-        :disabled="loading"
         @click="emit('close')"
       >
         <X class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
       </button>
-      <div v-if="song" class="flex items-center gap-3.5 pr-10 sm:gap-4">
+      <div class="flex items-center gap-3.5 pr-10 sm:gap-4">
         <MusicArtwork :src="coverUrl" class="w-18 shadow-md sm:w-22" />
         <div class="min-w-0">
           <h2
@@ -53,10 +56,9 @@ const playlistButton = useTemplateRef("playlistButton");
           </p>
         </div>
       </div>
-      <h2 v-else class="pr-12 text-lg font-semibold">歌曲详情</h2>
     </header>
     <div
-      v-if="song && (song.lyricist || song.composer || song.description)"
+      v-if="song.lyricist || song.composer || song.description"
       class="min-h-0 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6"
     >
       <dl v-if="song.lyricist || song.composer" class="flex flex-wrap gap-x-5 gap-y-2 text-sm">
@@ -77,15 +79,15 @@ const playlistButton = useTemplateRef("playlistButton");
       </section>
     </div>
     <p
-      v-else-if="loading"
-      class="flex items-center gap-2 px-4 py-4 text-sm text-base-content/70 sm:px-6"
+      v-if="loading"
+      class="flex shrink-0 items-center gap-2 px-4 py-4 text-sm text-base-content/70 sm:px-6"
       role="status"
     >
       <span class="loading loading-spinner loading-xs" aria-hidden="true" /> 加载中…
     </p>
-    <p v-else-if="error" class="px-4 py-4 text-sm text-error sm:px-6" role="alert">{{ error }}</p>
+    <p v-else-if="!details && error" class="shrink-0 px-4 py-4 text-sm text-error sm:px-6" role="alert">{{ error }}</p>
     <footer
-      v-if="song && !app.offline"
+      v-if="details && !app.offline"
       class="flex shrink-0 flex-wrap items-center gap-1 border-t border-base-300/70 px-4 pt-3 pb-[calc(0.75rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] sm:gap-2 sm:px-6"
     >
       <button
@@ -96,7 +98,7 @@ const playlistButton = useTemplateRef("playlistButton");
       >
         <Trash2 class="size-4" aria-hidden="true" /> 删除
       </button>
-      <button type="button" class="btn btn-ghost ml-auto" @click="emit('edit', song)">
+      <button type="button" class="btn btn-ghost ml-auto" @click="emit('edit', details)">
         <Pencil class="size-4" aria-hidden="true" /> 编辑
       </button>
       <button

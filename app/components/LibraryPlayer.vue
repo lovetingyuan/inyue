@@ -21,7 +21,6 @@ const player = usePlayerStore();
 const {
   current: track,
   queue,
-  position,
   volume,
   playing,
   loading,
@@ -65,12 +64,6 @@ const {
   start: revealModeNotice,
   stop: hideModeNotice,
 } = useTimeoutFn(() => {}, 1500, { immediate: false });
-const duration = computed(() => track.value?.duration || 0);
-const seekPreview = ref<number>();
-const displayedPosition = computed(() => seekPreview.value ?? position.value);
-const progress = computed(() =>
-  duration.value ? Math.min(1, Math.max(0, displayedPosition.value / duration.value)) : 0,
-);
 
 watch(
   volume,
@@ -83,7 +76,6 @@ watch(
 watch(
   () => track.value?.id,
   (trackId) => {
-    seekPreview.value = undefined;
     if (trackId) return;
     hideModeNotice();
     queueDialog.value?.close();
@@ -96,9 +88,9 @@ function toggleMute() {
   return player.setVolume(volume.value === 0 ? lastAudibleVolume : 0);
 }
 
-function commitSeek(value: number) {
-  seekPreview.value = undefined;
-  void player.seek(value);
+function playQueuedTrack(trackId: string) {
+  queueDialog.value?.close();
+  void player.playQueuedTrack(trackId);
 }
 
 async function cycleMode() {
@@ -224,27 +216,7 @@ async function cycleMode() {
             <ListMusic class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
           </button>
         </div>
-        <div
-          class="flex w-full items-center gap-2 text-[11px] text-neutral-content/75 tabular-nums max-md:col-span-2"
-        >
-          <span>{{ formatMusicTime(displayedPosition) }}</span>
-          <PlaybackSlider
-            :key="track.id"
-            data-playback-seek
-            aria-label="播放进度"
-            class="min-w-0 flex-1 text-neutral-content"
-            :fill="progress"
-            :max="duration"
-            step="0.1"
-            :value="displayedPosition"
-            :disabled="!duration"
-            @input="seekPreview = $event"
-            @change="commitSeek"
-            @pointercancel="seekPreview = undefined"
-            @blur="seekPreview = undefined"
-          />
-          <span>{{ formatMusicTime(duration) }}</span>
-        </div>
+        <PlaybackProgress layout="inline" class="max-md:col-span-2" />
       </div>
       <div class="flex min-w-0 items-center justify-end md:gap-2">
         <div class="flex min-w-0 items-center gap-1">
@@ -283,18 +255,19 @@ async function cycleMode() {
 
   <NowPlayingDialog
     ref="nowPlaying"
-    :duration="duration"
-    :displayed-position="displayedPosition"
-    :progress="progress"
     :show-loading-ring="showLoadingRing"
     :playback-mode="playbackMode"
     :mode-label="modeLabel"
     :changing-mode="changingMode"
     :mute-label="muteLabel"
-    @preview-seek="seekPreview = $event"
-    @seek="commitSeek"
     @cycle-mode="cycleMode"
     @toggle-mute="toggleMute"
   />
-  <PlaybackQueueDialog ref="queueDialog" :queue="queue" :current-track-id="track?.id" />
+  <PlaybackQueueDialog
+    ref="queueDialog"
+    :queue="queue"
+    :current-track-id="track?.id"
+    :playing="playing"
+    @play="playQueuedTrack"
+  />
 </template>

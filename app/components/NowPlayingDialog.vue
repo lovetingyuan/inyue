@@ -5,9 +5,6 @@ import type { Component } from "vue";
 
 defineOptions({ name: "NowPlayingDialog" });
 defineProps<{
-  duration: number;
-  displayedPosition: number;
-  progress: number;
   showLoadingRing: boolean;
   playbackMode: { label: string; icon: Component };
   modeLabel: string;
@@ -15,8 +12,6 @@ defineProps<{
   muteLabel: string;
 }>();
 const emit = defineEmits<{
-  previewSeek: [value: number | undefined];
-  seek: [value: number];
   cycleMode: [];
   toggleMute: [];
 }>();
@@ -24,6 +19,7 @@ const emit = defineEmits<{
 const player = usePlayerStore();
 const { current: track, volume, playing, loading, error } = storeToRefs(player);
 const dialog = useTemplateRef("dialog");
+const progressBar = useTemplateRef("progressBar");
 
 defineExpose({
   open: () => showMusicDialog(dialog.value),
@@ -32,7 +28,12 @@ defineExpose({
 </script>
 
 <template>
-  <dialog ref="dialog" class="modal" aria-labelledby="now-playing-title">
+  <dialog
+    ref="dialog"
+    class="modal"
+    aria-labelledby="now-playing-title"
+    @close="progressBar?.resetPreview()"
+  >
     <div
       class="modal-box safe-panel flex h-dvh max-h-dvh w-screen max-w-none flex-col rounded-none bg-base-100 bg-linear-to-b from-primary/10 to-transparent to-70% p-0 sm:h-auto sm:max-h-[90dvh] sm:w-md sm:rounded-box"
     >
@@ -69,27 +70,7 @@ defineExpose({
               </span>
             </p>
           </div>
-          <div>
-            <PlaybackSlider
-              :key="track.id"
-              data-playback-seek
-              aria-label="播放进度"
-              class="range-primary w-full"
-              :fill="progress"
-              :max="duration"
-              step="0.1"
-              :value="displayedPosition"
-              :disabled="!duration"
-              @input="emit('previewSeek', $event)"
-              @change="emit('seek', $event)"
-              @pointercancel="emit('previewSeek', undefined)"
-              @blur="emit('previewSeek', undefined)"
-            />
-            <div class="flex justify-between text-xs text-base-content/70 tabular-nums">
-              <span>{{ formatMusicTime(displayedPosition) }}</span
-              ><span>{{ formatMusicTime(duration) }}</span>
-            </div>
-          </div>
+          <PlaybackProgress ref="progressBar" layout="stacked" />
           <div class="flex items-center justify-center gap-6 sm:gap-8">
             <button
               type="button"

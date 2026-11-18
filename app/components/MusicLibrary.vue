@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Clock, Ellipsis, LoaderCircle, Music, Play, Search, Signal, X } from "@lucide/vue";
+import { Clock, Ellipsis, LoaderCircle, Music, Play, Search, X } from "@lucide/vue";
 import { useObjectUrl } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import { coverMaxBytes } from "~~/shared/library-limits";
@@ -38,6 +38,7 @@ const dialog = useTemplateRef("dialog");
 const songEditor = useTemplateRef("songEditor");
 const playlistPicker = useTemplateRef("playlistPicker");
 const editing = ref<Song>();
+const selectedSong = shallowRef<Song>();
 const panel = ref<"song" | "playlist" | "details" | "delete">();
 const deleting = ref<"song" | "playlist">();
 const playlistName = ref("");
@@ -91,6 +92,7 @@ function show(kind: typeof panel.value) {
 
 function closePanel() {
   panel.value = undefined;
+  selectedSong.value = undefined;
   library.songId = undefined;
 }
 
@@ -100,6 +102,7 @@ function openSong(song: Song) {
 }
 
 function view(song: Song) {
+  selectedSong.value = song;
   library.songId = song.id;
   show("details");
 }
@@ -201,12 +204,12 @@ onBeforeUnmount(() => {
       </div>
       <div class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 pb-5 sm:px-6">
         <div
-          class="flex shrink-0 items-center gap-3 rounded-box bg-linear-to-br from-primary/17 to-base-200/55 p-3 sm:gap-4 sm:p-4"
+          class="flex shrink-0 items-center gap-3 rounded-box bg-linear-to-br from-primary/17 to-base-200/55 px-2 py-1.5 sm:gap-4 sm:px-3 sm:py-2"
         >
-          <MusicArtwork :src="playlistCoverUrl" class="w-14 shadow-md sm:w-20" />
+          <MusicArtwork :src="playlistCoverUrl" class="w-12 shadow-md sm:w-14" />
           <div class="min-w-0 flex-1">
             <h2
-              class="line-clamp-2 wrap-anywhere text-xl leading-tight font-bold tracking-tight sm:text-2xl"
+              class="line-clamp-2 wrap-anywhere text-lg leading-tight font-bold tracking-tight sm:text-xl"
               :title="title"
             >
               {{ title }}
@@ -313,9 +316,9 @@ onBeforeUnmount(() => {
                     v-if="playbackLoading && current?.id === song.id"
                     class="size-4 animate-spin text-neutral-content sm:text-primary"
                   />
-                  <Signal
+                  <PlayingBars
                     v-else-if="playing && current?.id === song.id"
-                    class="playing-bars size-4 text-neutral-content sm:text-primary"
+                    class="size-4 text-neutral-content sm:text-primary"
                   />
                   <template v-else
                     ><span class="hidden text-base-content/55 group-hover:opacity-0 sm:block">{{ index + 1 }}</span
@@ -491,7 +494,9 @@ onBeforeUnmount(() => {
           </div>
         </form>
         <SongDetails
-          v-else-if="panel === 'details'"
+          v-else-if="panel === 'details' && selectedSong"
+          :initial-song="selectedSong"
+          :initial-cover-url="selectedSong.coverId ? coverUrls[selectedSong.coverId] : undefined"
           @close="dialog?.close()"
           @edit="openSong"
           @delete="
@@ -525,42 +530,3 @@ onBeforeUnmount(() => {
     <SongPlaylistPicker v-if="panel === 'details' && details" ref="playlistPicker" />
   </div>
 </template>
-
-<style scoped>
-.playing-bars :deep(path:first-child) {
-  display: none;
-}
-
-.playing-bars :deep(path:nth-child(2)) {
-  scale: 1 3;
-  animation: playing-bar 640ms ease-in-out -220ms infinite alternate;
-}
-
-.playing-bars :deep(path:nth-child(3)) {
-  scale: 1 1.5;
-  animation: playing-bar 730ms ease-in-out -510ms infinite alternate-reverse;
-}
-
-.playing-bars :deep(path:nth-child(4)) {
-  animation: playing-bar 590ms ease-in-out -90ms infinite alternate;
-}
-
-.playing-bars :deep(path:nth-child(5)) {
-  animation: playing-bar 680ms ease-in-out -390ms infinite alternate-reverse;
-}
-
-.playing-bars :deep(path) {
-  transform-box: fill-box;
-  transform-origin: center bottom;
-  vector-effect: non-scaling-stroke;
-}
-
-@keyframes playing-bar {
-  from {
-    transform: scaleY(0.35);
-  }
-  to {
-    transform: scaleY(1);
-  }
-}
-</style>

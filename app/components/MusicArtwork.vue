@@ -13,7 +13,7 @@ watch(
 
 <template>
   <span
-    class="relative grid aspect-square shrink-0 place-items-center overflow-hidden rounded-[18%] bg-artwork-background"
+    class="relative grid aspect-square shrink-0 place-items-center overflow-hidden rounded-xl bg-artwork-background"
   >
     <img
       v-if="src && !broken"
