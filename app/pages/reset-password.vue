@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { useSessionStore } from "~/stores/session";
+import AccountForm from "~/components/AccountForm.vue";
+import { computed } from "vue";
+import { definePageMeta } from "#imports";
+import { NuxtLink } from "#components";
+import { useHead, useRoute, useRouter } from "#app";
 defineOptions({ name: "ResetPasswordPage" });
 definePageMeta({ layout: "account" });
 useHead({ title: "重置密码 · inYue" });

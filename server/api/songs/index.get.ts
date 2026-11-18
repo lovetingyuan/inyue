@@ -1,3 +1,5 @@
+import { createError, defineEventHandler, getQuery, setResponseHeader } from "h3";
+import { requireUserSession } from "#better-auth-session";
 import { and, desc, eq, exists, inArray, notExists, or, sql } from "drizzle-orm";
 import { offlineOwnerHeader } from "~~/shared/offline-library";
 import type { SongDetails } from "~~/shared/types/library";

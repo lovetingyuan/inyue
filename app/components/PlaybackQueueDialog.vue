@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { showMusicDialog } from "~/utils/music-dialog";
+import PlayingBars from "~/components/PlayingBars.vue";
+import MusicArtwork from "~/components/MusicArtwork.vue";
+import { useTemplateRef } from "vue";
 import { X } from "@lucide/vue";
 import type { Track } from "~~/shared/types/library";
 

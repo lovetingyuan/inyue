@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import AccountForm from "~/components/AccountForm.vue";
+import { computed } from "vue";
+import { definePageMeta } from "#imports";
+import { NuxtLink } from "#components";
+import { useHead, useRoute } from "#app";
 import { libraryReturnPath } from "~/utils/account-navigation";
 
 defineOptions({ name: "ForgotPasswordPage" });

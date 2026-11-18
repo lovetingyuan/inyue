@@ -1,3 +1,5 @@
+import { useRuntimeConfig } from "nitropack/runtime";
+import { createError } from "h3";
 import { drizzle } from "drizzle-orm/d1";
 import type { H3Event } from "h3";
 import { getD1Database } from "./auth-database";

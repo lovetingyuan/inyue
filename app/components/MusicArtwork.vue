@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { showMusicDialog } from "~/utils/music-dialog";
+import { computed, ref, useTemplateRef, watch } from "vue";
 import { X } from "@lucide/vue";
 import { Capacitor } from "@capacitor/core";
 const props = defineProps<{ src?: string | null; zoomable?: boolean }>();

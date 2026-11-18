@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useSessionStore } from "~/stores/session";
+import { useAppStore } from "~/stores/app";
+import MusicArtwork from "~/components/MusicArtwork.vue";
+import { NuxtLink } from "#components";
 defineOptions({ name: "AccountLayout" });
 
 const app = useAppStore();

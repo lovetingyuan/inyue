@@ -1,3 +1,4 @@
+import { createError } from "h3";
 import { and, eq, gt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { session, user } from "../database/auth-schema";

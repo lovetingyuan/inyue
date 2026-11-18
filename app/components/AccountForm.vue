@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useSessionStore } from "~/stores/session";
+import { useAppStore } from "~/stores/app";
+import { useAccountActions } from "~/composables/useAccountActions";
+import { computed, reactive, ref, toRefs, useTemplateRef } from "vue";
 import type { AccountFormMode } from "~/types/account";
 import { googleLoginError, libraryReturnPath } from "~/utils/account-navigation";
 

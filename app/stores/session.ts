@@ -1,3 +1,9 @@
+import { usePlayerStore } from "~/stores/player";
+import { useAppStore } from "~/stores/app";
+import { useMusicApi } from "~/composables/useMusicApi";
+import { useAccountActions } from "~/composables/useAccountActions";
+import { computed, ref, shallowRef, watch } from "vue";
+import { useRouter } from "#app";
 import { useQuery, useQueryCache } from "@pinia/colada";
 import { defineStore } from "pinia";
 import { offlineExpiryHeader } from "~~/shared/offline-library";

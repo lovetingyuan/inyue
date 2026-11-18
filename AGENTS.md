@@ -8,6 +8,7 @@
   - 应用面向用户的名称统一为 `inYue`，技术名称使用 `inyue`。
   - 技术栈：Nuxt 4、Vue 3、TypeScript、Tailwind CSS 4、daisyUI 5、Capacitor Android。
   - 页面与组件放 `app/`，服务端放 `server/`，共享代码放 `shared/`，遵循nuxt框架的最佳实践。
+  - 禁止使用 Nuxt 和 Nitro 自动导入。Vue API、Nuxt API、组件以及项目的组合式函数和工具函数均须显式导入。Vue 编译器宏（如 `defineProps`）按 Vue 语法直接使用。
   - 禁止使用陈旧过时的语法、API、平台特性，禁止使用质量不佳的三方库，如更新不及时、采用率低等
   - 因为是使用一套代码，同时部署到web平台和移动平台，所以必须注意代码运行环境和条件调用，不能出现兼容性问题
     - 使用 `Capacitor.isNativePlatform()` 来判断环境

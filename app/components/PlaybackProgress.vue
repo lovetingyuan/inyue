@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { formatMusicTime } from "~/utils/format-music-time";
+import { usePlayerStore } from "~/stores/player";
+import PlaybackSlider from "~/components/PlaybackSlider.vue";
+import { computed, ref, watch } from "vue";
 import { useDocumentVisibility } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 

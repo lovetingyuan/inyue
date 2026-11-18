@@ -1,3 +1,10 @@
+import { useSessionStore } from "~/stores/session";
+import { usePlayerStore } from "~/stores/player";
+import { useLibraryStore } from "~/stores/library";
+import { useAppStore } from "~/stores/app";
+import { useMusicApi } from "~/composables/useMusicApi";
+import { nextTick, onBeforeUnmount, onMounted, watch } from "vue";
+import { useNuxtApp, useRuntimeConfig } from "#app";
 import { useMutationCache, useQueryCache } from "@pinia/colada";
 import type { PluginListenerHandle } from "@capacitor/core";
 import { useDocumentVisibility, useEventListener, useIntervalFn, useOnline } from "@vueuse/core";

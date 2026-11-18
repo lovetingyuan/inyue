@@ -1,3 +1,5 @@
+import { defineEventHandler, setResponseHeader } from "h3";
+import { requireUserSession } from "#better-auth-session";
 import { eq, sum } from "drizzle-orm";
 import { files } from "../database/library-schema";
 import { libraryDatabase, libraryQuota } from "../utils/library";

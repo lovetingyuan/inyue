@@ -1,3 +1,6 @@
+import { useRuntimeConfig } from "nitropack/runtime";
+import { createError, defineEventHandler, getRequestURL, readBody, setResponseHeader } from "h3";
+import { requireUserSession } from "#better-auth-session";
 import { and, eq, inArray } from "drizzle-orm";
 import { offlineOwnerHeader } from "~~/shared/offline-library";
 import { files, songs } from "../../database/library-schema";

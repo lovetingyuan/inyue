@@ -1,3 +1,4 @@
+import { defineNitroPlugin } from "nitropack/runtime";
 import { drizzle } from "drizzle-orm/d1";
 import { requireD1Database } from "../utils/auth-database";
 import { cleanupLibraryFiles } from "../utils/library-files";

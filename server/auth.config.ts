@@ -1,3 +1,4 @@
+import { useRuntimeConfig } from "nitropack/runtime";
 import { defineServerAuth } from "@nuxtjs/better-auth/config";
 import { bearer } from "better-auth/plugins";
 import { sendAccountMail } from "./utils/account-mail";

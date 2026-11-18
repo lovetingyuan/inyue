@@ -1,3 +1,5 @@
+import { useRuntimeConfig } from "nitropack/runtime";
+import { createError } from "h3";
 const accountMailCopy = {
   验证邮箱: "你好，欢迎加入 inYue！请验证你的邮箱以完成注册。",
   重置密码: "你好，请点击下方按钮重置你的 inYue 密码。",

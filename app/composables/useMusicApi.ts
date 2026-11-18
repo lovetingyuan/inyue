@@ -1,3 +1,6 @@
+import { useSessionStore } from "~/stores/session";
+import { useAppStore } from "~/stores/app";
+import { createError, useNuxtApp, useRequestEvent, useRequestHeader, useRuntimeConfig } from "#app";
 import { Capacitor } from "@capacitor/core";
 import type { NitroFetchOptions, NitroFetchRequest } from "nitropack";
 import { offlineOwnerHeader } from "~~/shared/offline-library";
@@ -8,7 +11,7 @@ const sessionKey = "music-session";
 export function useMusicApi() {
   const config = useRuntimeConfig().public;
   const native = Capacitor.isNativePlatform();
-  const pinia = usePinia();
+  const pinia = useNuxtApp().$pinia;
   const event = useRequestEvent();
   const cookie = useRequestHeader("cookie");
 
@@ -51,7 +54,7 @@ export function useMusicApi() {
     }
     if (app?.offline && (write || session)) throw new Error("当前离线。");
     try {
-      const response = await $fetch.raw<T>(path, {
+      const response = await globalThis.$fetch.raw<T>(path, {
         retry: 0,
         timeout: (native || localEvent) && method === "GET" ? 5000 : undefined,
         ...options,

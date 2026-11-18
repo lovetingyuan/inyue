@@ -1,3 +1,5 @@
+import { createError, defineEventHandler, getRouterParam, sendNoContent } from "h3";
+import { requireUserSession } from "#better-auth-session";
 import { playlists } from "../../database/library-schema";
 import { libraryDatabase } from "../../utils/library";
 import { cleanupUserFiles } from "../../utils/library-files";

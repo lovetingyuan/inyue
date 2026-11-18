@@ -1,3 +1,5 @@
+import { useMusicApi } from "~/composables/useMusicApi";
+import { useAuthClient } from "@nuxtjs/better-auth/composables";
 import { useMutation, useMutationCache } from "@pinia/colada";
 import type { AccountAction } from "~/types/account";
 

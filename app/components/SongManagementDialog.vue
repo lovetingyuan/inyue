@@ -1,4 +1,14 @@
 <script setup lang="ts">
+import { showMusicDialog } from "~/utils/music-dialog";
+import { libraryError } from "~/utils/library-error";
+import { useLibraryStore } from "~/stores/library";
+import { useAppStore } from "~/stores/app";
+import { useSongDetailsState } from "~/composables/useLibraryQueries";
+import { useLibraryDelete } from "~/composables/useLibraryMutations";
+import SongPlaylistPicker from "~/components/SongPlaylistPicker.vue";
+import SongEditor from "~/components/SongEditor.vue";
+import SongDetails from "~/components/SongDetails.vue";
+import { nextTick, onBeforeUnmount, ref, shallowRef, useTemplateRef } from "vue";
 import type { Song } from "~~/shared/types/library";
 
 defineProps<{ coverUrls: Record<string, string> }>();

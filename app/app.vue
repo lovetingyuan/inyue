@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import { useSessionStore } from "~/stores/session";
+import { useAppStore } from "~/stores/app";
+import { useAppSession } from "~/composables/useAppSession";
+import StartupScreen from "~/components/StartupScreen.vue";
+import IntegrationPlaybackView from "~/components/IntegrationPlaybackView.vue";
+import { computed, onServerPrefetch, watch } from "vue";
+import { NuxtLayout, NuxtPage, NuxtPwaManifest, NuxtRouteAnnouncer } from "#components";
+import { navigateTo, useHead, useNuxtApp, useRouter, useRuntimeConfig } from "#app";
 import { useStorage } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import { libraryReturnPath } from "~/utils/account-navigation";
@@ -35,7 +43,7 @@ const libraryVisible = computed(
 );
 const showIntegration = computed(() => session.account && integrationPlayback && !app.offline);
 const redirect = computed(() => {
-  if (!session.ready || app.offline || session.signingOut) return;
+  if (!session.ready || app.offline || session.signingOut) return undefined;
   const { path, query } = route.value;
   if (path === "/") {
     if (typeof query.token === "string" || query.error === "INVALID_TOKEN") {
@@ -54,6 +62,7 @@ const redirect = computed(() => {
   if (!session.account && !accountRoute.value) {
     return { path: "/login", query: { redirect: libraryReturnPath(path) } };
   }
+  return undefined;
 });
 const showStartup = computed(
   () =>

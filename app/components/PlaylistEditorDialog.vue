@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import { showMusicDialog } from "~/utils/music-dialog";
+import { libraryError, libraryFormError } from "~/utils/library-error";
+import { useAppStore } from "~/stores/app";
+import { usePlaylistState } from "~/composables/useLibraryQueries";
+import { useLibraryDelete, usePlaylistSave } from "~/composables/useLibraryMutations";
+import MusicArtwork from "~/components/MusicArtwork.vue";
+import { computed, nextTick, reactive, ref, shallowRef, useId, useTemplateRef } from "vue";
 import { X } from "@lucide/vue";
 import { useObjectUrl } from "@vueuse/core";
 import { coverMaxBytes } from "~~/shared/library-limits";

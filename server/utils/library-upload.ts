@@ -1,3 +1,4 @@
+import { createError, getRequestHeader, readMultipartFormData } from "h3";
 import { audioMaxBytes, coverMaxBytes, uploadMaxBytes } from "../../shared/library-limits";
 import type { H3Event, MultiPartData } from "h3";
 

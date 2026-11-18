@@ -1,3 +1,10 @@
+import { useSessionStore } from "~/stores/session";
+import { usePlayerStore } from "~/stores/player";
+import { useLibraryStore } from "~/stores/library";
+import { useAppStore } from "~/stores/app";
+import { useMusicApi } from "~/composables/useMusicApi";
+import { computed, shallowRef, watch, watchEffect, type Ref } from "vue";
+import { useNuxtApp } from "#app";
 import { useInfiniteQuery, useQuery, useQueryCache, useQueryState } from "@pinia/colada";
 import type {
   MediaAuthorization,

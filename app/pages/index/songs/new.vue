@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { useAppStore } from "~/stores/app";
+import SongEditor from "~/components/SongEditor.vue";
+import { onBeforeRouteLeave } from "vue-router";
+import { useTemplateRef } from "vue";
+import { useHead, useRouter } from "#app";
 import { ArrowLeft } from "@lucide/vue";
 defineOptions({ name: "NewSong" });
 

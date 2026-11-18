@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { useSessionStore } from "~/stores/session";
+import LogoutConfirmDialog from "~/components/LogoutConfirmDialog.vue";
+import IntegrationPlayer from "~/components/IntegrationPlayer.vue";
+import { useTemplateRef } from "vue";
 defineOptions({ name: "IntegrationPlaybackView" });
 
 type LogoutConfirmDialogExpose = { open: () => void };

@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import { useSessionStore } from "~/stores/session";
+import { useAppStore } from "~/stores/app";
+import PlaylistNavigation from "~/components/PlaylistNavigation.vue";
+import AccountSettingsDialog from "~/components/AccountSettingsDialog.vue";
+import { useTemplateRef, watch } from "vue";
+import { NuxtLink } from "#components";
+import { useRoute } from "#app";
 import { Menu, Plus, X } from "@lucide/vue";
 import { useMediaQuery } from "@vueuse/core";
 import { storeToRefs } from "pinia";

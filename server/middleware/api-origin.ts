@@ -1,3 +1,4 @@
+import { useRuntimeConfig } from "nitropack/runtime";
 import {
   appendResponseHeader,
   createError,

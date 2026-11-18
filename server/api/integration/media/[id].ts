@@ -1,3 +1,4 @@
+import { createError, defineEventHandler, getQuery, getRouterParam, sendNoContent } from "h3";
 import { integrationMedia } from "../../../utils/integration-media";
 import { getMediaSession, verifyMedia } from "../../../utils/media-access";
 import { serveMedia } from "../../../utils/serve-media";

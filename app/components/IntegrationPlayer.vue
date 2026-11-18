@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useSessionStore } from "~/stores/session";
+import { useMusicApi } from "~/composables/useMusicApi";
+import { onBeforeUnmount, ref } from "vue";
 import type { PlaylistPlugin, AudioTrack } from "@dwbn/capacitor-plugin-playlist";
 import type { PluginListenerHandle } from "@capacitor/core";
 import { useQuery } from "@pinia/colada";

@@ -2,7 +2,9 @@ import { execFileSync } from "node:child_process";
 import { lstatSync, readlinkSync, unlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
+import { defineNuxtConfig } from "nuxt/config";
 import { vueVitePlugin } from "vite-plugin-dom-source";
 import webManifest from "./public/manifest.json";
 import { devPort } from "./shared/dev-server.mjs";
@@ -10,6 +12,7 @@ import { defaultQuotaBytes } from "./shared/library-limits";
 
 const require = createRequire(import.meta.url);
 const nitroRoot = dirname(require.resolve("nitropack/package.json"));
+const betterAuthRoot = dirname(fileURLToPath(import.meta.resolve("@nuxtjs/better-auth")));
 
 function getGitHash() {
   try {
@@ -27,6 +30,15 @@ const buildHash = process.env.VITE_GIT_HASH || getGitHash();
 export default defineNuxtConfig({
   telemetry: false,
   experimental: { appManifest: false },
+  imports: { autoImport: false, scan: false },
+  components: {
+    dirs: [],
+    transform: { exclude: [/^(?!.*[\\/]node_modules[\\/]).*[\\/]app[\\/]/] },
+  },
+  alias: {
+    // Better Auth exposes its server session helpers through Nitro's import registry.
+    "#better-auth-session": resolve(betterAuthRoot, "runtime/server/utils/session.js"),
+  },
 
   compatibilityDate: "2025-07-15",
   devtools: { enabled: true },
@@ -67,6 +79,7 @@ export default defineNuxtConfig({
   },
 
   nitro: {
+    imports: { autoImport: false },
     preset: "cloudflare_module",
     externals: {
       // The generated Better Auth module imports the local TypeScript adapter.

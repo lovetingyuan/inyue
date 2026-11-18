@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { libraryError } from "~/utils/library-error";
+import { useAppStore } from "~/stores/app";
+import { useCoverQuery, useSongDetailsState } from "~/composables/useLibraryQueries";
+import MusicArtwork from "~/components/MusicArtwork.vue";
+import { computed, useTemplateRef } from "vue";
 import { ListPlus, Pencil, Trash2, X } from "@lucide/vue";
 import type { Song } from "~~/shared/types/library";
 
@@ -9,7 +14,7 @@ const app = useAppStore();
 const covers = useCoverQuery(() => (song.value.coverId ? [song.value.coverId] : []));
 const coverUrl = computed(() => {
   const id = song.value.coverId;
-  if (!id) return;
+  if (!id) return undefined;
   return covers.urls.value[id] ?? (id === props.initialSong.coverId ? props.initialCoverUrl : undefined);
 });
 const loading = computed(

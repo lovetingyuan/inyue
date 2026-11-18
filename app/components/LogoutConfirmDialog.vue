@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { showMusicDialog } from "~/utils/music-dialog";
+import { useId, useTemplateRef } from "vue";
 defineOptions({ name: "LogoutConfirmDialog" });
 
 const emit = defineEmits<{ confirm: [] }>();

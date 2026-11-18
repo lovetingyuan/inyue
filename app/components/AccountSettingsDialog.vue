@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { showMusicDialog } from "~/utils/music-dialog";
+import { useSessionStore } from "~/stores/session";
+import { useAppStore } from "~/stores/app";
+import LogoutConfirmDialog from "~/components/LogoutConfirmDialog.vue";
+import { computed, nextTick, onMounted, ref, shallowRef, useTemplateRef } from "vue";
 import { ExternalLink } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { Account } from "~~/shared/types/library";

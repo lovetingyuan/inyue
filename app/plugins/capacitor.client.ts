@@ -1,3 +1,5 @@
+import { nextTick } from "vue";
+import { defineNuxtPlugin } from "#app";
 import { Capacitor } from "@capacitor/core";
 
 export default defineNuxtPlugin((nuxtApp) => {

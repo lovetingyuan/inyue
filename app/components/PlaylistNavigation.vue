@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { useLibraryStore } from "~/stores/library";
+import { useAppStore } from "~/stores/app";
+import { usePlaylistState } from "~/composables/useLibraryQueries";
+import MusicArtwork from "~/components/MusicArtwork.vue";
+import { computed } from "vue";
+import { useRouter } from "#app";
 import { Ellipsis, ListMusic, Music, Plus } from "@lucide/vue";
 import type { Playlist } from "~~/shared/types/library";
 

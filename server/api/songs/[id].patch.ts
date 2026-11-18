@@ -1,3 +1,5 @@
+import { createError, defineEventHandler, getRouterParam, setResponseHeader } from "h3";
+import { requireUserSession } from "#better-auth-session";
 import { songs } from "../../database/library-schema";
 import { offlineOwnerHeader } from "~~/shared/offline-library";
 import { libraryDatabase } from "../../utils/library";

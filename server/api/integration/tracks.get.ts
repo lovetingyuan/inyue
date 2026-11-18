@@ -1,3 +1,5 @@
+import { defineEventHandler } from "h3";
+import { requireUserSession } from "#better-auth-session";
 import { integrationMedia } from "../../utils/integration-media";
 import { signMedia } from "../../utils/media-access";
 

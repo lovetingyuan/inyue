@@ -1,3 +1,5 @@
+import { defineEventHandler, setResponseHeader } from "h3";
+import { requireUserSession } from "#better-auth-session";
 import { desc, eq } from "drizzle-orm";
 import { offlineOwnerHeader } from "~~/shared/offline-library";
 import { playlists } from "../../database/library-schema";

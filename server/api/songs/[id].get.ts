@@ -1,3 +1,5 @@
+import { defineEventHandler, getRouterParam, setResponseHeader } from "h3";
+import { requireUserSession } from "#better-auth-session";
 import { memberships } from "../../database/library-schema";
 import { and, eq } from "drizzle-orm";
 import { offlineOwnerHeader } from "~~/shared/offline-library";

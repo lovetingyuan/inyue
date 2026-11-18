@@ -1,3 +1,8 @@
+import { libraryError, libraryErrorCode } from "~/utils/library-error";
+import { useSessionStore } from "~/stores/session";
+import { usePlayerStore } from "~/stores/player";
+import { useLibraryStore } from "~/stores/library";
+import { useMusicApi } from "~/composables/useMusicApi";
 import { useMutation, useQueryCache } from "@pinia/colada";
 import type { Song, SongDetails } from "~~/shared/types/library";
 import { accountQueryKey, libraryKeys } from "~/utils/music-query-keys";

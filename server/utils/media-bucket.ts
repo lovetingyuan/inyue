@@ -1,3 +1,4 @@
+import { createError } from "h3";
 import type { H3Event } from "h3";
 import type { MediaBucket } from "../types/integration-media";
 

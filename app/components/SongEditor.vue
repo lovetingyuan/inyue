@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { libraryFormError } from "~/utils/library-error";
+import { useAppStore } from "~/stores/app";
+import { useSongSave } from "~/composables/useLibraryMutations";
+import MusicArtwork from "~/components/MusicArtwork.vue";
+import { computed, reactive, ref, shallowRef, useId, useTemplateRef } from "vue";
 import { Image, Music, Plus, X } from "@lucide/vue";
 import { useObjectUrl } from "@vueuse/core";
 import type { Song } from "~~/shared/types/library";

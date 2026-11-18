@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import { useSessionStore } from "~/stores/session";
+import { useAppStore } from "~/stores/app";
+import { useMusicApi } from "~/composables/useMusicApi";
+import AccountForm from "~/components/AccountForm.vue";
+import { computed, onMounted } from "vue";
+import { definePageMeta } from "#imports";
+import { NuxtLink } from "#components";
+import { useHead, useRoute, useRouter } from "#app";
 import { useQuery } from "@pinia/colada";
 import { googleLoginError, libraryReturnPath } from "~/utils/account-navigation";
 

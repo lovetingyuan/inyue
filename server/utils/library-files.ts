@@ -1,3 +1,4 @@
+import { createError } from "h3";
 import { and, eq, inArray, lt } from "drizzle-orm";
 import type { H3Event } from "h3";
 import { files } from "../database/library-schema";

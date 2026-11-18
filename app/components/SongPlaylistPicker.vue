@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import { showMusicDialog } from "~/utils/music-dialog";
+import { libraryError } from "~/utils/library-error";
+import { useAppStore } from "~/stores/app";
+import { usePlaylistState, useSongDetailsState } from "~/composables/useLibraryQueries";
+import { useSongMembershipSave } from "~/composables/useLibraryMutations";
+import MusicArtwork from "~/components/MusicArtwork.vue";
+import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
 const { data: song } = useSongDetailsState();
 const { playlists, covers } = usePlaylistState();
 const membership = useSongMembershipSave();

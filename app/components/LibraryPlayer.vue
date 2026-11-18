@@ -1,4 +1,11 @@
 <script setup lang="ts">
+import { usePlayerStore } from "~/stores/player";
+import PlaybackSlider from "~/components/PlaybackSlider.vue";
+import PlaybackQueueDialog from "~/components/PlaybackQueueDialog.vue";
+import PlaybackProgress from "~/components/PlaybackProgress.vue";
+import NowPlayingDialog from "~/components/NowPlayingDialog.vue";
+import MusicArtwork from "~/components/MusicArtwork.vue";
+import { computed, ref, useTemplateRef, watch } from "vue";
 import {
   ListMusic,
   ListOrdered,

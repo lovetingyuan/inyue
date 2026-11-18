@@ -1,4 +1,16 @@
 <script setup lang="ts">
+import { formatMusicTime } from "~/utils/format-music-time";
+import { libraryError } from "~/utils/library-error";
+import { usePlayerStore } from "~/stores/player";
+import { useLibraryStore } from "~/stores/library";
+import { useAppStore } from "~/stores/app";
+import { useCoverQuery, useLibraryQueries, useOfflineAudio, usePlaylistState } from "~/composables/useLibraryQueries";
+import PlayingBars from "~/components/PlayingBars.vue";
+import MusicArtwork from "~/components/MusicArtwork.vue";
+import LibraryPlayer from "~/components/LibraryPlayer.vue";
+import { computed, useTemplateRef } from "vue";
+import { NuxtLink } from "#components";
+import { useRouter } from "#app";
 import { Clock, Ellipsis, LoaderCircle, Music, Play, Search } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { Song } from "~~/shared/types/library";

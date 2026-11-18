@@ -1,3 +1,7 @@
+import { useSessionStore } from "~/stores/session";
+import { useAppStore } from "~/stores/app";
+import { useMusicApi } from "~/composables/useMusicApi";
+import { computed, ref, shallowRef, watch } from "vue";
 import type { PluginListenerHandle } from "@capacitor/core";
 import type { PlaylistPlugin } from "@dwbn/capacitor-plugin-playlist";
 import { useDocumentVisibility, useIntervalFn } from "@vueuse/core";

@@ -1,4 +1,10 @@
 <script setup lang="ts">
+import { showMusicDialog } from "~/utils/music-dialog";
+import { usePlayerStore } from "~/stores/player";
+import PlaybackSlider from "~/components/PlaybackSlider.vue";
+import PlaybackProgress from "~/components/PlaybackProgress.vue";
+import MusicArtwork from "~/components/MusicArtwork.vue";
+import { useTemplateRef } from "vue";
 import { ChevronDown, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { Component } from "vue";
