@@ -3,7 +3,7 @@ import type { AccountAction } from "~/types/account";
 
 export function useAccountActions() {
   const { native, request, signIn, signOut } = useMusicApi();
-  const auth = useAuthClient();
+  const auth = native ? null : useAuthClient();
   const cache = useMutationCache();
   // Keep credentials out of mutation variables and discard the response and error entry on settlement.
   let action: AccountAction | undefined;

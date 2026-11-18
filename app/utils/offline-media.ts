@@ -1,9 +1,12 @@
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { audioMaxBytes, coverMaxBytes } from "~~/shared/library-limits";
+import type { NativeOfflineMediaPlugin } from "~/types/native-offline-media";
 import { idbResult, offlineMaxAge, scopedKeys, withOfflineStore } from "./offline-library";
 
 const quota = 256 * 1024 * 1024;
 const rootName = "inyue-library-media";
 const idPattern = /^[\da-f-]{36}$/;
+const nativeMedia = registerPlugin<NativeOfflineMediaPlugin>("OfflineMedia");
 
 type Kind = "audio" | "cover";
 
@@ -35,6 +38,7 @@ function locked<T>(scope: string, callback: () => Promise<T>): Promise<T | undef
 }
 
 export function removeMediaScope(scope: string) {
+  if (Capacitor.isNativePlatform()) return nativeMedia.clean({ scope, removeScope: true });
   return locked(scope, async () => {
     await (await mediaRoot()).removeEntry(scope, { recursive: true });
   });
@@ -52,6 +56,7 @@ async function deleteMedia(scope: string, directory: FileSystemDirectoryHandle, 
 }
 
 export function removeOfflineAudio(scope: string, id: string) {
+  if (Capacitor.isNativePlatform()) return nativeMedia.removeAudio({ scope, id });
   return locked(scope, async () => {
     const directory = await (await mediaRoot()).getDirectoryHandle(scope);
     await deleteMedia(scope, directory, `audio-${id}`);
@@ -81,6 +86,7 @@ async function pruneMedia(
 }
 
 export function pruneOfflineMedia(scope: string) {
+  if (Capacitor.isNativePlatform()) return nativeMedia.clean({ scope });
   return locked(scope, async () => {
     const entries = await mediaEntries(scope);
     if (!entries) return;
@@ -113,19 +119,46 @@ async function readMedia(scope: string, directory: FileSystemDirectoryHandle, na
 
 export function readOfflineMedia(scope: string, kind: Kind, id: string) {
   return (async () => {
+    if (Capacitor.isNativePlatform()) {
+      if (!await withOfflineStore(scope, "readonly", () => true)) return;
+      const { uri } = await nativeMedia.read({ scope, kind, id });
+      if (await withOfflineStore(scope, "readonly", () => true)) return uri;
+      return;
+    }
     const directory = await (await mediaRoot()).getDirectoryHandle(scope);
     return readMedia(scope, directory, `${kind}-${id}`);
   })().catch(() => undefined);
 }
 
+export async function readNativeAudioSources(scope: string) {
+  try {
+    if (await withOfflineStore(scope, "readonly", () => true)) {
+      const { sources } = await nativeMedia.listAudio({ scope });
+      if (await withOfflineStore(scope, "readonly", () => true)) return sources;
+    }
+  } catch {
+    // The system may have reclaimed the app's media cache.
+  }
+  return {};
+}
+
 export async function readOfflineAudioIds(scope: string) {
-  const entries = await mediaEntries(scope).catch(() => undefined);
-  const oldest = Date.now() - offlineMaxAge;
-  return new Set(
-    (entries ?? []).flatMap(({ name, accessedAt }) =>
-      name.startsWith("audio-") && accessedAt > oldest ? [name.slice(6)] : [],
-    ),
-  );
+  if (Capacitor.isNativePlatform()) return new Set(Object.keys(await readNativeAudioSources(scope)));
+  try {
+    const directory = await (await mediaRoot()).getDirectoryHandle(scope);
+    const entries = await mediaEntries(scope);
+    const oldest = Date.now() - offlineMaxAge;
+    const ids = new Set<string>();
+    for (const { name, accessedAt, bytes } of entries ?? []) {
+      if (!name.startsWith("audio-") || accessedAt <= oldest) continue;
+      const handle = await directory.getFileHandle(name).catch(() => undefined);
+      const file = await handle?.getFile().catch(() => undefined);
+      if (file?.size === bytes) ids.add(name.slice(6));
+    }
+    return ids;
+  } catch {
+    return new Set<string>();
+  }
 }
 
 export function cacheOfflineMedia(
@@ -134,7 +167,17 @@ export function cacheOfflineMedia(
   id: string,
   url: string,
   signal?: AbortSignal,
+  apiOrigin = "",
 ) {
+  if (Capacitor.isNativePlatform()) {
+    return (async () => {
+      const origin = apiOrigin || location.origin;
+      const source = new URL(url);
+      if (source.origin !== origin || signal?.aborted ||
+          !await withOfflineStore(scope, "readonly", () => true) || signal?.aborted) return;
+      await nativeMedia.download({ scope, kind, id, origin, url });
+    })().catch(() => undefined);
+  }
   return locked(scope, async () => {
     if (signal?.aborted || !idPattern.test(id)) return;
     const source = new URL(url);

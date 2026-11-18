@@ -16,10 +16,10 @@ export const useSessionStore = defineStore("session", () => {
   const signingOut = ref(false);
   const logoutError = ref("");
   const loginFeedback = shallowRef<{ notice: string; email?: string }>();
-  const web = import.meta.client && !native;
   const offlineState = shallowRef<OfflineState>();
-  const offlineReady = ref(!web);
+  const offlineReady = ref(false);
   let connectionRevision = 0;
+  let reconnect: Promise<void> | undefined;
   let revokedScope: string | undefined;
 
   const accountQuery = useQuery({
@@ -29,12 +29,13 @@ export const useSessionStore = defineStore("session", () => {
     // Login awaits refetch(), so the retry must finish before it returns.
     retry: 0,
     query: async ({ signal }) => {
-      const storage = web ? await import("~/utils/offline-library") : undefined;
+      const storage = import.meta.client ? await import("~/utils/offline-library") : undefined;
       const state = await storage?.readOfflineState().catch(() => undefined);
       signal.throwIfAborted();
       try {
         const response = await request<Account>("/api/account", {
-          retry: 1,
+          cache: "no-store",
+          retry: app.offline ? 0 : 1,
           timeout: 5000,
           signal,
         });
@@ -42,7 +43,7 @@ export const useSessionStore = defineStore("session", () => {
         const expiresAt = Number(response.headers.get(offlineExpiryHeader));
         signal.throwIfAborted();
         if (storage && account) {
-          const profile = expiresAt > Date.now() ? { account, expiresAt } : undefined;
+          const profile = native || expiresAt > Date.now() ? { account, expiresAt } : undefined;
           const verified = await storage
             .changeOfflineAccount(state?.revision, profile)
             .catch(() => undefined);
@@ -61,7 +62,7 @@ export const useSessionStore = defineStore("session", () => {
           await storage?.changeOfflineAccount(state?.revision).catch(() => undefined);
           return null;
         }
-        if (web && status === undefined) {
+        if (storage && (status === undefined || status === 502 || status === 503 || status === 504)) {
           offlineState.value = state?.revision === revokedScope ? undefined : state;
           offlineReady.value = true;
           app.offline = true;
@@ -71,9 +72,9 @@ export const useSessionStore = defineStore("session", () => {
     },
   });
   const account = computed(() => {
-    if (web && app.offline) {
+    if (app.offline) {
       const profile = offlineState.value?.profile;
-      return profile && profile.expiresAt > Date.now() ? profile.account : null;
+      return profile && (native || profile.expiresAt > Date.now()) ? profile.account : null;
     }
     return accountQuery.data.value ?? null;
   });
@@ -81,9 +82,7 @@ export const useSessionStore = defineStore("session", () => {
     accountQuery.error.value && !account.value ? "暂时无法连接音乐库。" : "",
   );
   const ready = computed(
-    () =>
-      mounted.value &&
-      (web && app.offline ? offlineReady.value : !accountQuery.isPending.value || app.offline),
+    () => (app.offline ? mounted.value && offlineReady.value : !accountQuery.isPending.value),
   );
   const userId = computed(() => account.value?.id ?? "");
   const offlineScope = computed(() => {
@@ -102,7 +101,7 @@ export const useSessionStore = defineStore("session", () => {
   watch(
     () => offlineState.value?.profile?.expiresAt,
     (expires, _, cleanup) => {
-      if (!expires) return;
+      if (native || !expires) return;
       const timer = setTimeout(
         async () => {
           const previous = offlineState.value;
@@ -128,14 +127,10 @@ export const useSessionStore = defineStore("session", () => {
   );
 
   async function setConnection(online: boolean) {
-    if (!web) {
-      if (!online) cache.cancelQueries({ key: accountQueryKey });
-      if (app.offline && online && !signingOut.value) void accountQuery.refetch();
-      app.offline = !online;
-      return;
-    }
-    const revision = ++connectionRevision;
     if (!online) {
+      if (app.offline && !reconnect && offlineReady.value) return;
+      const revision = ++connectionRevision;
+      reconnect = undefined;
       cache.cancelQueries({ key: accountQueryKey });
       app.offline = true;
       const storage = await import("~/utils/offline-library");
@@ -144,14 +139,18 @@ export const useSessionStore = defineStore("session", () => {
       offlineState.value = state?.revision === revokedScope ? undefined : state;
       offlineReady.value = true;
     } else if (app.offline && !signingOut.value) {
-      const result = await accountQuery.refetch();
-      if (revision === connectionRevision && result.status === "success") {
-        // Mark the online queries stale before switching keys so each refetch starts once.
+      if (reconnect) return reconnect;
+      const revision = ++connectionRevision;
+      const attempt = accountQuery.refetch().then(async (result) => {
+        if (revision !== connectionRevision || result.status !== "success") return;
         if (result.data)
           await cache.invalidateQueries({ key: libraryKeys.user(result.data.id) }, false);
-        if (revision !== connectionRevision) return;
-        app.offline = false;
-      }
+        if (revision === connectionRevision) app.offline = false;
+      }).finally(() => {
+        if (reconnect === attempt) reconnect = undefined;
+      });
+      reconnect = attempt;
+      return attempt;
     }
   }
 
@@ -165,7 +164,7 @@ export const useSessionStore = defineStore("session", () => {
   }
 
   function rejectSession(id: string, revision: number) {
-    if (!web || id !== userId.value || revision !== generation.value || signingOut.value) return;
+    if (id !== userId.value || revision !== generation.value || signingOut.value) return;
     const scope = offlineScope.value;
     cache.cancelQueries({ key: accountQueryKey });
     cache.setQueryData(accountQueryKey, null);
@@ -178,6 +177,7 @@ export const useSessionStore = defineStore("session", () => {
     if (state?.revision === offlineState.value?.revision) return;
     revokedScope = offlineState.value?.revision;
     connectionRevision++;
+    reconnect = undefined;
     cache.cancelQueries({ key: accountQueryKey });
     cache.setQueryData(accountQueryKey, null);
     offlineState.value = undefined;

@@ -9,27 +9,24 @@ export function useMusicApi() {
   const config = useRuntimeConfig().public;
   const native = Capacitor.isNativePlatform();
   const pinia = usePinia();
+  const event = useRequestEvent();
+  const cookie = useRequestHeader("cookie");
+
+  function apiOrigin() {
+    if (!native || (import.meta.dev && !config.mobileApiOrigin)) return "";
+    try {
+      const api = new URL(config.mobileApiOrigin);
+      const local = config.mobileLocalTest && api.origin === "http://127.0.0.1:8794";
+      if (api.href === `${api.origin}/` && (local || api.protocol === "https:")) return api.origin;
+    } catch {
+      // Report invalid and missing origins in the same way.
+    }
+    throw new Error("请配置 Android API 地址。");
+  }
 
   async function request<T>(path: string, options?: NitroFetchOptions<NitroFetchRequest>) {
-    const headers = new Headers(options?.headers);
-    let baseURL = "";
-    if (native) {
-      if (!import.meta.dev || config.mobileApiOrigin) {
-        try {
-          const api = new URL(config.mobileApiOrigin);
-          const local = config.mobileLocalTest && api.origin === "http://127.0.0.1:8794";
-          if (api.href !== `${api.origin}/` || (!local && api.protocol !== "https:"))
-            throw new Error();
-          baseURL = api.origin;
-        } catch {
-          throw new Error("请配置 Android API 地址。");
-        }
-      }
-      const { SecureStorage } = await import("@aparajita/capacitor-secure-storage");
-      const token = await SecureStorage.getItem(sessionKey);
-      if (token) headers.set("authorization", `Bearer ${token}`);
-    }
     const method = options?.method?.toUpperCase() ?? "GET";
+    const publicRequest = method === "GET" && path === "/api/auth-providers";
     const library = /^\/api\/(songs|playlists|integration)(\/|$)/.test(path);
     const authorize = path === "/api/media/authorize";
     const hasOwner =
@@ -37,15 +34,28 @@ export function useMusicApi() {
       (method === "GET" && /^\/api\/(songs|playlists)(\/|$)/.test(path)) ||
       (method === "POST" && path === "/api/songs") ||
       (method === "PATCH" && path.startsWith("/api/songs/"));
-    const session =
-      import.meta.client && !native && (library || authorize) ? useSessionStore(pinia) : undefined;
+    const session = import.meta.client && (library || authorize) ? useSessionStore(pinia) : undefined;
     const userId = session?.userId;
     const generation = session?.generation;
-    if (session && useAppStore(pinia).offline) throw new Error("当前离线。");
+    const write = method !== "GET" && method !== "HEAD";
+    const app = import.meta.client ? useAppStore(pinia) : undefined;
+    if (app?.offline && (write || session)) throw new Error("当前离线。");
+    const headers = new Headers(options?.headers);
+    const baseURL = apiOrigin();
+    const localEvent = import.meta.server && path.startsWith("/api/") ? event : undefined;
+    if (localEvent && cookie) headers.set("cookie", cookie);
+    if (native && !publicRequest) {
+      const { SecureStorage } = await import("@aparajita/capacitor-secure-storage");
+      const token = await SecureStorage.getItem(sessionKey);
+      if (token) headers.set("authorization", `Bearer ${token}`);
+    }
+    if (app?.offline && (write || session)) throw new Error("当前离线。");
     try {
       const response = await $fetch.raw<T>(path, {
         retry: 0,
+        timeout: (native || localEvent) && method === "GET" ? 5000 : undefined,
         ...options,
+        ...(localEvent ? { context: localEvent.context } : {}),
         headers,
         baseURL,
         credentials: native ? "omit" : "same-origin",
@@ -61,8 +71,14 @@ export function useMusicApi() {
       return response;
     } catch (error) {
       const status = responseStatus(error);
+      // Keep request headers and API responses out of the serialized query errors.
+      if (import.meta.server) throw createError({ statusCode: status ?? 503 });
       if (userId && generation !== undefined && (status === 401 || status === 403))
         session?.rejectSession(userId, generation);
+      if (native && session && !options?.signal?.aborted &&
+          (status === 502 || status === 503 || status === 504 ||
+            (status === undefined && error instanceof Error && error.name === "FetchError")))
+        void session.setConnection(false);
       throw error;
     }
   }
@@ -88,5 +104,5 @@ export function useMusicApi() {
     }
   }
 
-  return { native, request, signIn, signOut };
+  return { apiOrigin, native, request, signIn, signOut };
 }

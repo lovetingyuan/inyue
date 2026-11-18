@@ -2,15 +2,19 @@
 import { Menu, Plus, X } from "@lucide/vue";
 import { useMediaQuery } from "@vueuse/core";
 import { storeToRefs } from "pinia";
+import PlaylistEditorDialog from "~/components/PlaylistEditorDialog.vue";
+import { usePlaylistQuery } from "~/composables/useLibraryQueries";
 
 defineOptions({ name: "LibraryLayout" });
 
 const app = useAppStore();
 const { drawerOpen, offline } = storeToRefs(app);
 const { account, userId } = storeToRefs(useSessionStore());
+usePlaylistQuery();
 const route = useRoute();
 const desktop = useMediaQuery("(min-width: 48rem)", { ssrWidth: 0 });
 const profile = useTemplateRef("profile");
+const playlistEditor = useTemplateRef("playlistEditor");
 const drawerTrigger = useTemplateRef<HTMLButtonElement>("drawerTrigger");
 const drawerClose = useTemplateRef<HTMLButtonElement>("drawerClose");
 
@@ -64,12 +68,10 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
           <Menu class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
         </button>
         <span class="text-xl font-bold tracking-tight">inYue</span>
+        <span class="text-xs text-base-content/65" role="status">{{ offline ? "离线" : "" }}</span>
       </header>
       <main class="flex min-h-0 flex-1 flex-col">
-        <p v-if="offline" class="alert alert-info alert-soft m-3" role="status">
-          {{ app.native ? "当前离线，连接网络后可访问音乐库。" : "当前离线 · 仅显示已缓存的内容。" }}
-        </p>
-        <slot v-if="!offline || !app.native" />
+        <slot />
       </main>
     </div>
     <div
@@ -95,6 +97,7 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
             <img src="/assets/icon/inyue.svg" width="36" height="36" class="shrink-0" alt="" />
             <span class="text-xl font-bold tracking-tight">inYue</span>
           </NuxtLink>
+          <span class="text-xs text-base-content/65" role="status">{{ offline ? "离线" : "" }}</span>
           <button
             ref="drawerClose"
             type="button"
@@ -105,7 +108,7 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
             <X class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
           </button>
         </div>
-        <nav v-if="!offline || !app.native" aria-label="曲库" class="flex min-h-0 flex-1 flex-col gap-2 px-3 pb-3">
+        <nav aria-label="曲库" class="flex min-h-0 flex-1 flex-col gap-2 px-3 pb-3">
           <NuxtLink
             v-if="!offline"
             to="/songs/new"
@@ -116,9 +119,10 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
             <Plus class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" /> 新增歌曲
           </NuxtLink>
           <div
-            id="library-playlists"
             class="min-h-0 overflow-y-auto overscroll-contain scrollbar-thin scrollbar-thumb-base-content/50 scrollbar-track-transparent"
-          />
+          >
+            <PlaylistNavigation @edit="playlistEditor?.open($event)" />
+          </div>
         </nav>
         <div v-if="account" class="mt-auto shrink-0 border-t border-base-300 p-2">
           <button
@@ -146,6 +150,7 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
         </div>
       </aside>
     </div>
+    <PlaylistEditorDialog :key="userId" ref="playlistEditor" />
     <AccountSettingsDialog v-if="account" ref="profile" :account="account" />
   </div>
 </template>

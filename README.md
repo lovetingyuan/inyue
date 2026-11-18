@@ -60,7 +60,7 @@ npm run android -- --target <ID>
 
 移动端使用 `capacitor` 配置环境关闭 SSR，静态资源独立生成到 `.output-capacitor/public/`，该路径也是 Capacitor 的 `webDir`，与 Web 构建产物互不覆盖。
 
-`npm run android` 启动或复用本项目的 Nuxt 服务，等页面和 Vite 就绪后，用 Capacitor 同步、Gradle 构建和 ADB 安装 App。浏览器和 Android 共用 `http://127.0.0.1:5223`，都支持热更新。Android 的地址通过 ADB 反向转发，默认使用同一个本地 API。可通过 `NUXT_PUBLIC_MOBILE_API_ORIGIN` 指定其他后端，该后端需允许热更新页面的源。
+`npm run android` 启动或复用本项目的 Nuxt 服务，等页面和 Vite 就绪后，用 Capacitor 同步、Gradle 构建和 ADB 安装 App。浏览器和 Android 共用 `http://127.0.0.1:5223`，都支持热更新。浏览器默认使用 SSR，Android 调试包使用客户端渲染。Android 的地址通过 ADB 反向转发，默认使用同一个本地 API。可通过 `NUXT_PUBLIC_MOBILE_API_ORIGIN` 指定其他后端，该后端需允许热更新页面的源。
 
 运行前请连接并授权手机，或先启动模拟器。连接多台设备时使用 `--target`。Windows PowerShell 可用 `npm.cmd run android -- --target <ID>`。USB 重连后重新运行命令即可恢复转发。
 

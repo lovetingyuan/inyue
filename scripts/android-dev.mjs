@@ -67,8 +67,6 @@ async function develop(target) {
         [
           nuxt,
           "dev",
-          "--envName",
-          "capacitor",
           "--host",
           host,
           "--port",
@@ -134,20 +132,18 @@ function isRunning(pid) {
 }
 
 function hasProjectServer(pid) {
-  return [".nuxt/nuxt.lock", "temp/nuxt-android/nuxt.lock"].some((file) => {
-    try {
-      const lock = JSON.parse(readFileSync(file, "utf8"));
-      return (
-        lock.command === "dev" &&
-        lock.url === devOrigin &&
-        resolve(lock.cwd) === process.cwd() &&
-        (pid === undefined || lock.pid === pid) &&
-        isRunning(lock.pid)
-      );
-    } catch {
-      return false;
-    }
-  });
+  try {
+    const lock = JSON.parse(readFileSync(".nuxt/nuxt.lock", "utf8"));
+    return (
+      lock.command === "dev" &&
+      lock.url === devOrigin &&
+      resolve(lock.cwd) === process.cwd() &&
+      (pid === undefined || lock.pid === pid) &&
+      isRunning(lock.pid)
+    );
+  } catch {
+    return false;
+  }
 }
 
 async function waitForServer(server, exited, signal) {
@@ -174,7 +170,7 @@ async function nuxtResponds(signal) {
   const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(3_000)]);
   const checks = await Promise.all(
     [
-      ["/", "text/html"],
+      ["/login", "text/html"],
       ["/_nuxt/@vite/client", "javascript"],
     ].map(async ([path, type]) => {
       const response = await fetch(new URL(path, devOrigin), {

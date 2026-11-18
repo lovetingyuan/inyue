@@ -34,6 +34,7 @@ export default defineNuxtConfig({
 
   app: {
     head: {
+      htmlAttrs: { lang: "zh-CN" },
       title: "inYue",
       viewport: "width=device-width, initial-scale=1.0, viewport-fit=cover",
       script: [
@@ -98,7 +99,6 @@ export default defineNuxtConfig({
   ],
 
   pwa: {
-    // The waiting worker activates automatically after the last app window closes.
     registerType: "prompt",
     client: { periodicSyncForUpdates: 60 * 60 },
     manifest: { ...webManifest, display: "standalone" },
@@ -107,7 +107,7 @@ export default defineNuxtConfig({
       // Nuxt adds a payload glob when prerendering, but the SPA shell has no payload file.
       globStrict: false,
       clientsClaim: true,
-      skipWaiting: false,
+      skipWaiting: true,
       cleanupOutdatedCaches: true,
       globPatterns: [
         "200.html",
@@ -116,11 +116,7 @@ export default defineNuxtConfig({
         "apple-touch-icon.png",
         "_nuxt/**/*.{js,css,woff,woff2}",
       ],
-      // The Nuxt PWA module maps 200.html to its Cloudflare asset URL /200.
-      navigateFallback: "/200",
-      navigateFallbackAllowlist: [
-        /^\/(?:$|\?|(?:login|register|forgot-password|reset-password|songs\/new)\/?(?:$|\?))/,
-      ],
+      navigateFallback: "",
       runtimeCaching: [
         {
           urlPattern: ({ url, sameOrigin }) =>
@@ -137,6 +133,27 @@ export default defineNuxtConfig({
   },
 
   hooks: {
+    ready(nuxt) {
+      if (nuxt.options.dev || !nuxt.options.ssr) return;
+
+      nuxt.hook("pwa:beforeBuildServiceWorker", ({ generateSW }) => {
+        generateSW?.runtimeCaching?.unshift({
+          urlPattern: ({ request, sameOrigin, url }) =>
+            sameOrigin && request.mode === "navigate" &&
+            /^(?:\/|\/(?:login|register|forgot-password|reset-password|songs\/new)\/?)$/.test(url.pathname),
+          handler: "NetworkOnly",
+          // The Nuxt PWA module maps 200.html to its Cloudflare asset URL /200.
+          options: { precacheFallback: { fallbackURL: "/200" } },
+        });
+      });
+    },
+    "app:resolve"(app) {
+      // The app initializes its session through /api/account, including in the Android WebView.
+      app.plugins = app.plugins.filter(({ src }) => {
+        const path = src.replaceAll("\\", "/");
+        return !path.includes("/@nuxtjs/better-auth/") || !/\/session\.client(?:\.js)?$/.test(path);
+      });
+    },
     listen(server) {
       const address = server.address();
       if (address && typeof address !== "string" && address.port === devPort) return;
@@ -192,11 +209,47 @@ export default defineNuxtConfig({
 
   $env: {
     capacitor: {
-      ...(process.env.NODE_ENV === "development"
-        ? { buildDir: "temp/nuxt-android", vite: { cacheDir: "temp/vite-android" } }
-        : {}),
       ssr: false,
-      pwa: { disable: true },
+      pwa: {
+        disable: process.env.NODE_ENV === "development",
+        generateSW: {
+          skipWaiting: false,
+          globPatterns: ["build-info.js"],
+          manifestTransforms: [(entries) => ({
+            // Capacitor intercepts /favicon.ico and serves navigation from the APK.
+            manifest: entries.filter(({ url }) => !/(?:^|\/)favicon\.ico$|\.html$/.test(url)),
+            warnings: [],
+          })],
+          ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^(?:time|hash)$/],
+          runtimeCaching: [
+            {
+              urlPattern: ({ url, request }) =>
+                url.pathname === "/api/auth-providers" && !url.search &&
+                request.cache !== "no-store" && request.credentials === "omit" &&
+                !request.headers.has("authorization"),
+              handler: "NetworkFirst",
+              options: {
+                cacheName: "inyue-android-public-api-v1",
+                networkTimeoutSeconds: 3,
+                cacheableResponse: { statuses: [200] },
+                expiration: { maxEntries: 3, maxAgeSeconds: 86_400, purgeOnQuotaError: true },
+              },
+            },
+            {
+              urlPattern: ({ request, sameOrigin, url }) =>
+                sameOrigin && !request.headers.has("authorization") &&
+                /^(image|script|style|font|worker)$/.test(request.destination) &&
+                /^\/(?:assets|_nuxt)\//.test(url.pathname),
+              handler: "CacheFirst",
+              options: {
+                cacheName: "inyue-android-assets-v1",
+                cacheableResponse: { statuses: [200] },
+                expiration: { maxEntries: 64, maxAgeSeconds: 2_592_000, purgeOnQuotaError: true },
+              },
+            },
+          ],
+        },
+      },
       auth: { clientOnly: process.env.NODE_ENV !== "development" },
       hooks: {
         close(nuxt) {

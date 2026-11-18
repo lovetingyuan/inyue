@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import type { Playlist, Song, SongDetails, SongPage } from "~~/shared/types/library";
 import { offlineSessionKey } from "~~/shared/offline-library";
 import type { OfflineAccount, OfflineState } from "~/types/offline-library";
@@ -83,7 +84,8 @@ export function withOfflineStore<T>(
 ) {
   return transaction(mode, async (store) => {
     const state = await getState(store);
-    if (state?.revision !== scope || !state.profile || state.profile.expiresAt <= Date.now())
+    if (state?.revision !== scope || !state.profile ||
+        (!Capacitor.isNativePlatform() && state.profile.expiresAt <= Date.now()))
       return;
     return work(store);
   });

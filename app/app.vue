@@ -9,6 +9,7 @@ const app = useAppStore();
 const session = useSessionStore();
 const router = useRouter();
 const route = router.currentRoute;
+const nuxtApp = useNuxtApp();
 const integrationPlayback = useRuntimeConfig().public.integrationPlayback;
 
 useAppSession();
@@ -24,7 +25,6 @@ const theme = useStorage("music-theme", storeToRefs(app).theme, undefined, {
 });
 useHead({
   htmlAttrs: {
-    lang: "zh-CN",
     "data-theme": () => (theme.value === "system" ? undefined : theme.value),
   },
 });
@@ -57,31 +57,33 @@ const redirect = computed(() => {
 });
 const showStartup = computed(
   () =>
-    !session.mounted ||
     !session.ready ||
     Boolean(redirect.value) ||
     (!app.offline && !session.account && !accountRoute.value),
 );
 
-watch(redirect, (target) => {
-  if (target) void router.replace(target);
-});
+if (import.meta.server) {
+  onServerPrefetch(async () => {
+    await session.refreshAccount();
+    const target = redirect.value;
+    if (target) await nuxtApp.runWithContext(() => navigateTo(target));
+  });
+} else {
+  watch(redirect, (target) => {
+    if (target) void router.replace(target);
+  });
+}
 </script>
 
 <template>
   <NuxtRouteAnnouncer />
   <NuxtPwaManifest />
-  <ClientOnly>
-    <StartupScreen v-if="showStartup" />
-    <NuxtLayout v-else :name="libraryVisible ? 'library' : 'account'">
-      <IntegrationPlaybackView v-if="showIntegration" :key="session.userId" />
-      <NuxtPage
-        v-else-if="libraryVisible || (!session.account && accountRoute)"
-        :key="session.userId"
-      />
-    </NuxtLayout>
-    <template #fallback>
-      <StartupScreen />
-    </template>
-  </ClientOnly>
+  <StartupScreen v-if="showStartup" />
+  <NuxtLayout v-else :name="libraryVisible ? 'library' : 'account'">
+    <IntegrationPlaybackView v-if="showIntegration" :key="session.userId" />
+    <NuxtPage
+      v-else-if="libraryVisible || (!session.account && accountRoute)"
+      :key="session.userId"
+    />
+  </NuxtLayout>
 </template>

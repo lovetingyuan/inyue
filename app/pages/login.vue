@@ -19,6 +19,7 @@ const redirect = computed(() => libraryReturnPath(route.query.redirect));
 const { data: authProviders } = useQuery({
   key: ["auth-providers"],
   enabled: () => !app.offline && !session.account,
+  ssrCatchError: true,
   retry: import.meta.server ? 0 : undefined,
   query: async ({ signal }) =>
     (await request("/api/auth-providers", { retry: import.meta.server ? 1 : 0, signal }))._data,

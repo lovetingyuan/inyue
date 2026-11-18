@@ -11,7 +11,7 @@ import type {
 } from "~~/shared/types/library";
 
 export const usePlayerStore = defineStore("player", () => {
-  const { native, request } = useMusicApi();
+  const { apiOrigin, native, request } = useMusicApi();
   const app = useAppStore();
   const visibility = useDocumentVisibility();
   const tracks = shallowRef<Track[]>([]);
@@ -51,7 +51,8 @@ export const usePlayerStore = defineStore("player", () => {
   let mediaWrites: AbortController | undefined;
   let audioUrl: string | undefined;
   let artworkUrl: string | undefined;
-  let savingTrack = "";
+  let nativeResumeAfterError = false;
+  const cachingTracks = new Set<string>();
 
   function readNativeProgress() {
     if (nativeRead) return nativeRead;
@@ -94,9 +95,8 @@ export const usePlayerStore = defineStore("player", () => {
     return `music-playback:${userId}`;
   }
 
-  watch([ids, order, queueSource, id, position, mode, volume], () => {
-    if (!import.meta.client || !owner || owner !== requestedOwner || !ids.value.length) return;
-    const snapshot: PlaybackSnapshot = {
+  function playbackSnapshot(): PlaybackSnapshot {
+    return {
       ids: ids.value,
       order: order.value,
       id: id.value,
@@ -105,8 +105,12 @@ export const usePlayerStore = defineStore("player", () => {
       volume: volume.value,
       queueKey: queueSource.value,
     };
+  }
+
+  watch([ids, order, queueSource, id, position, mode, volume], () => {
+    if (!import.meta.client || !owner || owner !== requestedOwner || !ids.value.length) return;
     try {
-      localStorage.setItem(storageKey(owner), JSON.stringify(snapshot));
+      localStorage.setItem(storageKey(owner), JSON.stringify(playbackSnapshot()));
     } catch {
       /* Storage may be unavailable. */
     }
@@ -115,7 +119,7 @@ export const usePlayerStore = defineStore("player", () => {
   function playbackError() {
     playing.value = false;
     loading.value = false;
-    error.value = app.offline && !native
+    error.value = app.offline
       ? "这首歌曲尚未缓存，联网后可播放。"
       : "无法播放，请检查网络或登录状态，再刷新队列。";
   }
@@ -143,18 +147,60 @@ export const usePlayerStore = defineStore("player", () => {
   async function cachePlayingTrack(track: Track) {
     const scope = useSessionStore().offlineScope;
     const signal = mediaWrites?.signal;
-    if (!scope || !signal || audioUrl || !track.url) return;
-    const [{ cacheOfflineMedia }, { readOfflineSong, saveOfflineSongs }] = await Promise.all([
+    if (!scope || !signal || app.offline || audioUrl || !track.url || track.url.startsWith("file://")) return;
+    const key = `${scope}/${track.id}`;
+    if (cachingTracks.has(key)) return;
+    cachingTracks.add(key);
+    try {
+      const [{ cacheOfflineMedia }, { readOfflineSong, saveOfflineSongs }] = await Promise.all([
+        import("~/utils/offline-media"), import("~/utils/offline-library"),
+      ]);
+      if (signal.aborted || app.offline) return;
+      const origin = apiOrigin();
+      const audio = cacheOfflineMedia(scope, "audio", track.id, track.url, signal, origin);
+      if (!signal.aborted && !await readOfflineSong(scope, track.id)) {
+        const { _data } = await request<SongDetails>(`/api/songs/${track.id}`, { signal });
+        if (_data && !signal.aborted) await saveOfflineSongs(scope, [_data]);
+      }
+      const coverId = track.coverUrl && new URL(track.coverUrl).pathname.split("/").at(-1);
+      if (coverId && track.coverUrl)
+        void cacheOfflineMedia(scope, "cover", coverId, track.coverUrl, signal, origin);
+      await audio;
+      if (native && !signal.aborted && track.id !== id.value) promoteNativeCache(track.id);
+    } finally {
+      cachingTracks.delete(key);
+    }
+  }
+
+  function nativeItem({ id, url, title, artist, album, coverUrl }: Track) {
+    return { trackId: id, assetUrl: url, title, artist, album: album ?? "", albumArt: coverUrl ?? undefined };
+  }
+
+  async function nativeCachedTrack(track: Track) {
+    const scope = useSessionStore().offlineScope;
+    if (!scope) return;
+    const [{ readOfflineMedia }, { readOfflineSong }] = await Promise.all([
       import("~/utils/offline-media"), import("~/utils/offline-library"),
     ]);
-    const audio = cacheOfflineMedia(scope, "audio", track.id, track.url, signal);
-    if (!signal.aborted && !await readOfflineSong(scope, track.id)) {
-      const { _data } = await request<SongDetails>(`/api/songs/${track.id}`, { signal });
-      if (_data && !signal.aborted) await saveOfflineSongs(scope, [_data]);
-    }
-    const coverId = track.coverUrl && new URL(track.coverUrl).pathname.split("/").at(-1);
-    if (coverId && track.coverUrl) void cacheOfflineMedia(scope, "cover", coverId, track.coverUrl, signal);
-    await audio;
+    const url = await readOfflineMedia(scope, "audio", track.id);
+    if (typeof url !== "string") return;
+    const song = await readOfflineSong(scope, track.id).catch(() => undefined);
+    const cover = song?.coverId ? await readOfflineMedia(scope, "cover", song.coverId) : undefined;
+    return { ...track, url, coverUrl: typeof cover === "string" ? cover : track.coverUrl };
+  }
+
+  function promoteNativeCache(trackId: string) {
+    const revision = ownerRevision;
+    operations = operations.then(async () => {
+      const output = player;
+      if (!output || revision !== ownerRevision || trackId === id.value) return;
+      const track = tracks.value.find((item) => item.id === trackId);
+      if (!track || track.url.startsWith("file://")) return;
+      const cached = await nativeCachedTrack(track);
+      if (!cached || revision !== ownerRevision || trackId === id.value) return;
+      await output.replaceItem({ id: trackId, item: nativeItem(cached) });
+      tracks.value = tracks.value.map((item) => item.id === trackId ? cached : item);
+    }).catch(() => undefined);
   }
 
   async function initializeNative() {
@@ -169,6 +215,16 @@ export const usePlayerStore = defineStore("player", () => {
         status.msgType === eventType.RMXSTATUS_ERROR ||
         status.msgType === eventType.RMXSTATUS_STALLED
       ) {
+        nativeResumeAfterError ||= playing.value || loading.value;
+        const track = tracks.value.find((item) => item.id === status.trackId);
+        if (track?.url.startsWith("file://") && !app.offline) {
+          const time = track.id === id.value ? (sampledPosition.value ?? position.value) : 0;
+          void run(async () => {
+            if (await nativeCachedTrack(track)) playbackError();
+            else await load(track.id, time, true);
+          });
+          return;
+        }
         playbackError();
         return;
       }
@@ -176,10 +232,19 @@ export const usePlayerStore = defineStore("player", () => {
       if (status.value && "currentPosition" in status.value) {
         // Android can report the first track while replacing the native queue.
         if (nativeLoadTarget.value && status.trackId !== nativeLoadTarget.value) return;
+        const previous = id.value;
         if (order.value.includes(status.trackId)) id.value = status.trackId;
+        if (previous && previous !== id.value) promoteNativeCache(previous);
         position.value = status.value.currentPosition;
         playing.value = status.value.status === "playing";
         loading.value = status.value.status === "loading";
+        if (status.msgType === eventType.RMXSTATUS_PLAYING || status.msgType === eventType.RMXSTATUS_PAUSE)
+          nativeResumeAfterError = false;
+        if (status.msgType === eventType.RMXSTATUS_PLAYING) {
+          const track = tracks.value.find((item) => item.id === status.trackId);
+          if (track?.url.startsWith("file://")) void nativeCachedTrack(track).catch(() => undefined);
+          else if (track) void cachePlayingTrack(track).catch(() => undefined);
+        }
       }
     });
 
@@ -211,9 +276,7 @@ export const usePlayerStore = defineStore("player", () => {
     audio.onplaying = () => {
       loading.value = false;
       const track = tracks.value.find((item) => item.id === id.value);
-      if (!track || savingTrack === track.id || app.offline || audioUrl) return;
-      savingTrack = track.id;
-      void cachePlayingTrack(track).catch(() => undefined);
+      if (track) void cachePlayingTrack(track).catch(() => undefined);
     };
     audio.onended = () => {
       if (!pendingTrack.value) void run(() => step(1));
@@ -253,24 +316,33 @@ export const usePlayerStore = defineStore("player", () => {
   async function load(selected: string, time: number, autoplay: boolean, signal?: AbortSignal) {
     const track = tracks.value.find(({ id }) => id === selected);
     if (!track) return;
+    const previous = id.value;
     if (native) nativeLoadTarget.value = selected;
     id.value = selected;
+    if (native && previous && previous !== selected) promoteNativeCache(previous);
     position.value = time;
     if (native) {
       try {
+        nativeResumeAfterError = false;
+        const revision = ownerRevision;
+        let source = await nativeCachedTrack(track);
+        if (!source && !app.offline) {
+          source = mediaUrlIsFresh(track.url) ? track : (await authorize([track.id]))[0];
+        }
+        if (revision !== ownerRevision || signal?.aborted || owner !== requestedOwner) return;
+        if (!source) {
+          playbackError();
+          return;
+        }
+        const playable = source;
+        if (playable !== track)
+          tracks.value = tracks.value.map((item) => item.id === track.id ? playable : item);
         await initializeNative();
         const output = player;
         if (owner !== requestedOwner || signal?.aborted || !output) return;
         await output.setLoop({ loop: mode.value === "loop" && order.value.length > 1 });
         await output.setPlaylistItems({
-          items: queue.value.map(({ id, url, title, artist, album, coverUrl }) => ({
-            trackId: id,
-            assetUrl: url,
-            title,
-            artist,
-            album: album ?? "",
-            albumArt: coverUrl ?? undefined,
-          })),
+          items: queue.value.map(nativeItem),
           options: { startPaused: true, playFromId: selected },
         });
         await output.setPlaybackVolume({ volume: volume.value });
@@ -296,14 +368,13 @@ export const usePlayerStore = defineStore("player", () => {
       webPlayback = undefined;
       output.pause();
       releaseObjectUrls();
-      savingTrack = "";
       if (!local && (app.offline || !source)) {
         output.removeAttribute("src");
         output.load();
         playbackError();
         return;
       }
-      if (local) audioUrl = URL.createObjectURL(local);
+      if (local instanceof Blob) audioUrl = URL.createObjectURL(local);
       output.src = audioUrl ?? source;
       output.volume = volume.value;
       output.currentTime = time;
@@ -313,7 +384,7 @@ export const usePlayerStore = defineStore("player", () => {
         const song = await readOfflineSong(scope, track.id).catch(() => undefined);
         const cover = song?.coverId && await media.readOfflineMedia(scope, "cover", song.coverId);
         if (revision !== ownerRevision || signal?.aborted) return;
-        if (cover) {
+        if (cover instanceof Blob) {
           artworkUrl = URL.createObjectURL(cover);
           tracks.value = tracks.value.map((item) => item.id === track.id ? { ...item, coverUrl: artworkUrl ?? null } : item);
         }
@@ -361,12 +432,13 @@ export const usePlayerStore = defineStore("player", () => {
           method: "POST",
           body: { songIds: list.slice(index, index + 80) },
           signal,
+          timeout: 5000,
         });
         authorized.push(...(_data?.tracks ?? []));
       }
       return authorized;
     } finally {
-      authorization = undefined;
+      if (authorization === controller) authorization = undefined;
     }
   }
 
@@ -381,30 +453,54 @@ export const usePlayerStore = defineStore("player", () => {
     const userId = owner;
     const generation = ownerRevision;
     if (!userId || userId !== requestedOwner) return;
-    const scope = !native && app.offline ? useSessionStore().offlineScope : undefined;
-    let authorized: Track[];
+    const scope = useSessionStore().offlineScope;
+    const cached = new Map<string, Track>();
     if (scope) {
-      const [{ readOfflineSongs }, { readOfflineAudioIds }] = await Promise.all([
+      const [{ readOfflineSongs }, media] = await Promise.all([
         import("~/utils/offline-library"), import("~/utils/offline-media"),
       ]);
-      const [songs, available] = await Promise.all([readOfflineSongs(scope), readOfflineAudioIds(scope)]);
-      const byId = new Map(songs.map((song) => [song.id, song]));
-      authorized = list.flatMap((id) => {
-        const song = byId.get(id);
-        return song && available.has(id) ? [{ ...song, url: "", coverUrl: null }] : [];
-      });
-    } else {
-      authorized = await authorize(list, controller);
+      const [songs, sources] = await Promise.all([
+        readOfflineSongs(scope).catch(() => []),
+        native ? media.readNativeAudioSources(scope) : media.readOfflineAudioIds(scope),
+      ]);
+      const byId = new Map<string, Omit<Track, "url">>(tracks.value.map((track) => [track.id, track]));
+      for (const song of songs) byId.set(song.id, { ...song, coverUrl: byId.get(song.id)?.coverUrl ?? null });
+      const pending = pendingTrack.value;
+      if (pending) byId.set(pending.id, pending);
+      for (const trackId of list) {
+        if (generation !== ownerRevision || controller?.signal.aborted) return;
+        const url = sources instanceof Set ? (sources.has(trackId) ? "" : undefined) : sources[trackId];
+        if (url === undefined) continue;
+        let track = byId.get(trackId);
+        if (!track && !app.offline && !controller?.signal.aborted) {
+          const { _data } = await request<SongDetails>(`/api/songs/${trackId}`, { signal: controller?.signal })
+            .catch(() => ({ _data: undefined }));
+          if (_data) track = { ..._data, coverUrl: null };
+        }
+        if (track) cached.set(trackId, { ...track, url });
+      }
     }
     if (generation !== ownerRevision || controller?.signal.aborted) return;
+    const missing = list.filter((trackId) => !cached.has(trackId));
+    let remote: Track[] = [];
+    if (!app.offline && missing.length) {
+      try {
+        remote = await authorize(missing, controller);
+      } catch (error) {
+        if (!app.offline) throw error;
+      }
+    }
+    if (generation !== ownerRevision || controller?.signal.aborted) return;
+    const authorized = [...cached.values(), ...remote];
     const available = new Set(authorized.map((track) => track.id));
-    if (scope && autoplay && !available.has(selected)) {
+    if (app.offline && autoplay && !available.has(selected)) {
       playbackError();
       return;
     }
     const valid = list.filter((track) => available.has(track));
     if (!valid.length) {
-      if (!scope) await clearQueue();
+      if (!app.offline) await clearQueue();
+      else await player?.clearAllItems();
       if (list.length) error.value = "队列里没有可播放的歌曲。";
       return;
     }
@@ -537,15 +633,7 @@ export const usePlayerStore = defineStore("player", () => {
       ids.value,
       id.value,
       true,
-      {
-        ids: ids.value,
-        order: order.value,
-        id: id.value,
-        position: position.value,
-        volume: volume.value,
-        mode: mode.value,
-        queueKey: queueSource.value,
-      },
+      playbackSnapshot(),
       undefined,
       queueSource.value,
     );
@@ -611,6 +699,7 @@ export const usePlayerStore = defineStore("player", () => {
     listener = undefined;
     nativeProgress = undefined;
     player = undefined;
+    nativeResumeAfterError = false;
     if (audio) {
       audio.ontimeupdate = audio.onplay = audio.onpause = audio.onended = audio.onerror = null;
       audio.onloadstart = audio.onwaiting = audio.oncanplay = audio.onplaying = null;
@@ -640,9 +729,10 @@ export const usePlayerStore = defineStore("player", () => {
     pendingTrack.value = undefined;
     authorization?.abort();
     mediaWrites?.abort();
-    mediaWrites = native || !userId ? undefined : new AbortController();
+    mediaWrites = userId ? new AbortController() : undefined;
     webPlayback = undefined;
     audio?.pause();
+    void player?.pause().catch(() => undefined);
     resetQueue();
     operations = operations.then(async () => {
       if (generation !== ownerRevision) return;
@@ -679,7 +769,20 @@ export const usePlayerStore = defineStore("player", () => {
   }
 
   watch(() => app.offline, (offline) => {
-    if (!native && offline && audio && !audioUrl && id.value) {
+    if (!offline || !id.value) return;
+    if (native) {
+      authorization?.abort();
+      const snapshot = playbackSnapshot();
+      snapshot.position = sampledPosition.value ?? snapshot.position;
+      const autoplay = playing.value || nativeResumeAfterError;
+      void run(async () => {
+        if (!app.offline) return;
+        const track = tracks.value.find((item) => item.id === snapshot.id);
+        const cached = track && await nativeCachedTrack(track);
+        await setQueue(snapshot.ids, snapshot.id, Boolean(cached && autoplay), snapshot, undefined, "");
+        if (!cached) playbackError();
+      });
+    } else if (audio && !audioUrl) {
       const active = id.value;
       const time = position.value;
       const autoplay = playing.value;

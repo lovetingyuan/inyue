@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery, useQueryState } from "@pinia/colada";
+import { useInfiniteQuery, useQuery, useQueryCache, useQueryState } from "@pinia/colada";
 import type {
   MediaAuthorization,
   Playlist,
@@ -18,7 +18,7 @@ export function useLibraryQueries() {
   const library = useLibraryStore();
   const app = useAppStore();
   const { request } = useMusicApi();
-  const enabled = () => Boolean(session.userId) && (!app.offline || !app.native);
+  const enabled = () => Boolean(session.userId) && (!app.offline || Boolean(session.offlineScope));
   const songs = useInfiniteQuery<SongPage, Error, number>(() => {
     const filters = library.filters;
     const scope = session.offlineScope;
@@ -28,6 +28,7 @@ export function useLibraryQueries() {
       enabled: enabled(),
       // Retry the failed page request instead of refetching the loaded pages.
       retry: 0,
+      ssrCatchError: true,
       initialPageParam: 0,
       query: async ({ pageParam, signal }) => {
         if (offline && scope) {
@@ -48,26 +49,16 @@ export function useLibraryQueries() {
       getNextPageParam: (page) => page.nextOffset,
     };
   });
-  const playlists = useQuery(() => {
-    const scope = session.offlineScope;
-    const offline = app.offline;
-    return {
-      key: connectionKey(libraryKeys.playlists(session.userId), offline),
-      enabled: enabled(),
-      query: async ({ signal }) => {
-        if (offline && scope) {
-          const { readOfflinePlaylists } = await import("~/utils/offline-library");
-          return readOfflinePlaylists(scope);
-        }
-        const { _data } = await request<Playlist[]>("/api/playlists", { signal });
-        if (scope && _data && !signal.aborted) {
-          const { saveOfflinePlaylists } = await import("~/utils/offline-library");
-          await saveOfflinePlaylists(scope, _data).catch(() => undefined);
-        }
-        return _data ?? [];
-      },
-    };
-  });
+  if (import.meta.client && useNuxtApp().isHydrating && useNuxtApp().payload.serverRendered) {
+    // The SSR queries finish before the browser verifies its offline cache scope.
+    watch(() => session.offlineScope, async (scope) => {
+      if (!scope || app.offline) return;
+      const { saveOfflineSongs } = await import("~/utils/offline-library");
+      if (scope !== session.offlineScope || app.offline) return;
+      const items = songs.data.value?.pages.flatMap(({ items }) => items);
+      if (items) await saveOfflineSongs(scope, items).catch(() => undefined);
+    }, { once: true });
+  }
   useQuery(() => {
     const id = library.songId;
     const scope = session.offlineScope;
@@ -129,20 +120,61 @@ export function useLibraryQueries() {
     );
   }
 
-  return { songs, playlists, play };
+  return { songs, play };
+}
+
+export function usePlaylistQuery() {
+  const session = useSessionStore();
+  const app = useAppStore();
+  const { request } = useMusicApi();
+  const playlists = useQuery(() => {
+    const scope = session.offlineScope;
+    const offline = app.offline;
+    return {
+      key: connectionKey(libraryKeys.playlists(session.userId), offline),
+      enabled: Boolean(session.userId) && (!offline || Boolean(scope)),
+      ssrCatchError: true,
+      query: async ({ signal }) => {
+        if (offline && scope) {
+          const { readOfflinePlaylists } = await import("~/utils/offline-library");
+          return readOfflinePlaylists(scope);
+        }
+        const { _data } = await request<Playlist[]>("/api/playlists", { signal });
+        if (scope && _data && !signal.aborted) {
+          const { saveOfflinePlaylists } = await import("~/utils/offline-library");
+          await saveOfflinePlaylists(scope, _data).catch(() => undefined);
+        }
+        return _data ?? [];
+      },
+    };
+  });
+  if (import.meta.client && useNuxtApp().isHydrating && useNuxtApp().payload.serverRendered) {
+    watch(() => session.offlineScope, async (scope) => {
+      if (!scope || app.offline) return;
+      const { saveOfflinePlaylists } = await import("~/utils/offline-library");
+      if (scope !== session.offlineScope || app.offline) return;
+      const lists = playlists.data.value;
+      if (lists) await saveOfflinePlaylists(scope, lists).catch(() => undefined);
+    }, { once: true });
+  }
 }
 
 export function usePlaylistState() {
   const session = useSessionStore();
   const app = useAppStore();
-  const { data } = useQueryState<Playlist[]>(() =>
-    connectionKey(libraryKeys.playlists(session.userId), app.offline),
-  );
+  const cache = useQueryCache();
+  const key = () => connectionKey(libraryKeys.playlists(session.userId), app.offline);
+  const { data, error } = useQueryState<Playlist[]>(key);
   const playlists = computed(() => data.value ?? []);
   const covers = useCoverState(() =>
     playlists.value.flatMap(({ coverId }) => (coverId ? [coverId] : [])),
   );
-  return { playlists, covers };
+  return {
+    playlists,
+    covers,
+    error,
+    retry: () => cache.invalidateQueries({ key: key(), exact: true }),
+  };
 }
 
 export function useSongDetailsState() {
@@ -208,14 +240,15 @@ function useCoverState(ids: () => readonly string[]) {
 export function useCoverQuery(ids: () => readonly string[]) {
   const session = useSessionStore();
   const app = useAppStore();
-  const { request } = useMusicApi();
+  const { apiOrigin, request } = useMusicApi();
   const query = useQuery(() => {
     const list = coverIds(ids());
     const scope = session.offlineScope;
     const offline = app.offline;
     return {
       key: connectionKey(coverKey(session.userId, list), offline),
-      enabled: Boolean(session.userId && list.length) && (!offline || !app.native),
+      enabled: import.meta.client && Boolean(session.userId && list.length) &&
+        (offline ? Boolean(scope) : !session.refreshing),
       retry: 0,
       staleTime: 60 * 60 * 1000,
       query: async ({ signal }) => {
@@ -241,7 +274,7 @@ export function useCoverQuery(ids: () => readonly string[]) {
             void (async () => {
               for (const [id, url] of addressed) {
                 if (signal.aborted) break;
-                await media.cacheOfflineMedia(scope, "cover", id, url, signal);
+                await media.cacheOfflineMedia(scope, "cover", id, url, signal, apiOrigin());
               }
             })();
           }

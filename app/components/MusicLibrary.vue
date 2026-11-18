@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { Clock, Ellipsis, LoaderCircle, Music, Play, Search, X } from "@lucide/vue";
-import { useObjectUrl } from "@vueuse/core";
+import { Clock, Ellipsis, LoaderCircle, Music, Play, Search } from "@lucide/vue";
 import { storeToRefs } from "pinia";
-import { coverMaxBytes } from "~~/shared/library-limits";
-import type { Playlist, Song } from "~~/shared/types/library";
+import type { Song } from "~~/shared/types/library";
+import SongManagementDialog from "~/components/SongManagementDialog.vue";
 
 const library = useLibraryStore();
 const app = useAppStore();
@@ -11,9 +10,8 @@ const { playlist, search, term } = storeToRefs(library);
 const { current, playing, loading: playbackLoading } = storeToRefs(usePlayerStore());
 const router = useRouter();
 const showLibrary = computed(() => router.currentRoute.value.path === "/");
-const { songs: songQuery, playlists: playlistQuery, play: playFromLibrary } = useLibraryQueries();
-const { playlists } = usePlaylistState();
-const { data: details } = useSongDetailsState();
+const { songs: songQuery, play: playFromLibrary } = useLibraryQueries();
+const { playlists, error: playlistError, retry: retryPlaylists } = usePlaylistState();
 const songs = computed(() => songQuery.data.value?.pages.flatMap(({ items }) => items) ?? []);
 const offlineAudio = useOfflineAudio();
 const firstPlayable = computed(() => songs.value.find((song) => !app.offline || offlineAudio.value?.has(song.id)));
@@ -29,34 +27,12 @@ const coverUrls = computed(() => ({ ...playlistCovers.urls.value, ...songCovers.
 const error = computed(() => {
   const cause =
     songQuery.error.value ??
-    playlistQuery.error.value ??
+    playlistError.value ??
     songCovers.error.value ??
     playlistCovers.error.value;
   return cause ? libraryError(cause) : "";
 });
-const dialog = useTemplateRef("dialog");
-const songEditor = useTemplateRef("songEditor");
-const playlistPicker = useTemplateRef("playlistPicker");
-const editing = ref<Song>();
-const selectedSong = shallowRef<Song>();
-const panel = ref<"song" | "playlist" | "details" | "delete">();
-const deleting = ref<"song" | "playlist">();
-const playlistName = ref("");
-const playlistEdit = ref<Playlist>();
-const playlistCover = shallowRef<File>();
-const playlistCoverPreview = useObjectUrl(() =>
-  panel.value === "playlist" ? playlistCover.value : undefined,
-);
-const removeCover = ref(false);
-const hasPlaylistCover = computed(
-  () => Boolean(playlistCover.value || (playlistEdit.value?.coverId && !removeCover.value)),
-);
-const playlistSave = usePlaylistSave();
-const libraryDelete = useLibraryDelete();
-const pending = computed(() => playlistSave.isLoading.value || libraryDelete.isLoading.value);
-const dialogError = ref("");
-const playlistErrors = reactive({ name: "", cover: "" });
-const playlistFieldId = useId();
+const songManagement = useTemplateRef("songManagement");
 const title = computed(() =>
   term.value
     ? "搜索结果"
@@ -70,7 +46,7 @@ const playlistCoverUrl = computed(() => {
 });
 
 async function retryLibrary() {
-  await Promise.all([songQuery.refetch(), playlistQuery.refetch()]);
+  await Promise.all([songQuery.refetch(), retryPlaylists()]);
   if (songCovers.error.value) void songCovers.refetch();
   if (playlistCovers.error.value) void playlistCovers.refetch();
 }
@@ -83,100 +59,10 @@ function playFirst() {
   const song = firstPlayable.value;
   if (song) void play(song);
 }
-
-function show(kind: typeof panel.value) {
-  panel.value = kind;
-  dialogError.value = "";
-  showMusicDialog(dialog.value);
-}
-
-function closePanel() {
-  panel.value = undefined;
-  selectedSong.value = undefined;
-  library.songId = undefined;
-}
-
-function openSong(song: Song) {
-  editing.value = song;
-  show("song");
-}
-
-function view(song: Song) {
-  selectedSong.value = song;
-  library.songId = song.id;
-  show("details");
-}
-
-function openPlaylist(item?: Playlist) {
-  playlistEdit.value = item;
-  playlistName.value = item?.name ?? "";
-  playlistCover.value = undefined;
-  removeCover.value = false;
-  playlistErrors.name = "";
-  playlistErrors.cover = "";
-  show("playlist");
-}
-
-function selectPlaylistCover(event: Event) {
-  playlistCover.value =
-    event.target instanceof HTMLInputElement ? event.target.files?.[0] : undefined;
-  playlistErrors.cover =
-    (playlistCover.value?.size ?? 0) > coverMaxBytes ? "封面不能超过 1 MiB。" : "";
-}
-
-function clearPlaylistCover() {
-  playlistCover.value = undefined;
-  removeCover.value = Boolean(playlistEdit.value?.coverId);
-  playlistErrors.cover = "";
-}
-
-async function update(action: () => Promise<void>) {
-  if (pending.value) return;
-  dialogError.value = "";
-  try {
-    await action();
-  } catch (cause) {
-    dialogError.value = libraryError(cause);
-  }
-}
-
-async function savePlaylist() {
-  if (pending.value || app.offline) return;
-  dialogError.value = "";
-  if (!playlistName.value) playlistErrors.name = "请填写歌单名称。";
-  if (!playlistName.value || (playlistCover.value?.size ?? 0) > coverMaxBytes) return;
-  const body = new FormData();
-  body.set("name", playlistName.value);
-  if (playlistCover.value) body.set("cover", playlistCover.value);
-  else if (removeCover.value) body.set("removeCover", "true");
-  try {
-    await playlistSave.mutateAsync({ playlistId: playlistEdit.value?.id, body });
-    dialog.value?.close();
-  } catch (cause) {
-    const { field, message } = libraryFormError(cause);
-    if (field === "name" || field === "cover") playlistErrors[field] = message;
-    else dialogError.value = message;
-  }
-}
-
-async function remove() {
-  const kind = deleting.value;
-  const id = kind === "song" ? details.value?.id : playlistEdit.value?.id;
-  if (!kind || !id) return;
-  await libraryDelete.mutateAsync({ kind, id });
-  dialog.value?.close();
-}
-
-onBeforeUnmount(() => {
-  library.songId = undefined;
-});
 </script>
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
-    <Teleport defer to="#library-playlists">
-      <PlaylistNavigation @edit="openPlaylist" />
-    </Teleport>
     <section
       v-show="showLibrary"
       class="flex min-h-0 min-w-0 flex-1 flex-col bg-base-100"
@@ -359,7 +245,7 @@ onBeforeUnmount(() => {
               <button
                 class="btn btn-ghost btn-circle btn-sm mr-1"
                 :aria-label="`${song.title} 详情`"
-                @click="view(song)"
+                @click="songManagement?.open(song)"
               >
                 <Ellipsis class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
               </button>
@@ -378,155 +264,6 @@ onBeforeUnmount(() => {
     </section>
     <slot />
     <LibraryPlayer />
-    <dialog
-      ref="dialog"
-      class="modal modal-bottom sm:modal-middle"
-      :aria-label="panel === 'details' ? '歌曲详情' : '管理歌曲和歌单'"
-      @cancel="(pending || songEditor?.busy) && $event.preventDefault()"
-      @close="closePanel"
-    >
-      <div
-        class="modal-box"
-        :class="
-          panel === 'details'
-            ? 'flex max-h-[min(85dvh,42rem)] flex-col overflow-hidden p-0'
-            : 'safe-panel'
-        "
-      >
-        <SongEditor
-          v-if="panel === 'song'"
-          ref="songEditor"
-          :song="editing"
-          :cover-url="editing?.coverId ? coverUrls[editing.coverId] : undefined"
-          @cancel="dialog?.close()"
-          @saved="dialog?.close()"
-        />
-        <form
-          v-else-if="panel === 'playlist'"
-          class="grid gap-3"
-          novalidate
-          @submit.prevent="savePlaylist"
-        >
-          <h2 class="text-lg font-semibold">{{ playlistEdit ? "编辑歌单" : "新建歌单" }}</h2>
-          <div class="grid gap-1">
-            <label :for="`${playlistFieldId}-name`">歌单名称</label>
-            <input
-              :id="`${playlistFieldId}-name`"
-              v-model.trim="playlistName"
-              class="input validator w-full"
-              required
-              maxlength="250"
-              :disabled="pending"
-              :aria-invalid="!!playlistErrors.name"
-              :aria-describedby="playlistErrors.name ? `${playlistFieldId}-name-error` : undefined"
-              @input="playlistErrors.name = ''"
-            />
-            <p
-              v-if="playlistErrors.name"
-              :id="`${playlistFieldId}-name-error`"
-              class="validator-hint mt-0"
-              role="alert"
-            >
-              {{ playlistErrors.name }}
-            </p>
-          </div>
-          <div class="grid gap-1">
-            <span v-if="hasPlaylistCover">封面</span>
-            <label v-else :for="`${playlistFieldId}-cover`">封面</label>
-            <div v-if="hasPlaylistCover" class="relative w-fit">
-              <MusicArtwork
-                :src="
-                  playlistCoverPreview ??
-                  (playlistEdit?.coverId ? coverUrls[playlistEdit.coverId] : undefined)
-                "
-                class="w-28"
-              />
-              <button
-                type="button"
-                class="btn btn-circle btn-sm absolute top-1 right-1"
-                aria-label="移除封面"
-                :disabled="pending"
-                @click="clearPlaylistCover"
-              >
-                <X class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
-              </button>
-            </div>
-            <input
-              v-else
-              :id="`${playlistFieldId}-cover`"
-              class="file-input validator w-full"
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              :disabled="pending"
-              :aria-invalid="!!playlistErrors.cover"
-              :aria-describedby="
-                playlistErrors.cover ? `${playlistFieldId}-cover-error` : undefined
-              "
-              @change="selectPlaylistCover"
-            />
-            <p
-              v-if="playlistErrors.cover"
-              :id="`${playlistFieldId}-cover-error`"
-              class="validator-hint mt-0"
-              role="alert"
-            >
-              {{ playlistErrors.cover }}
-            </p>
-          </div>
-          <p v-if="dialogError" class="text-sm text-error" role="alert">{{ dialogError }}</p>
-          <div class="flex flex-wrap justify-end gap-2">
-            <button
-              v-if="playlistEdit"
-              type="button"
-              class="btn btn-error btn-outline mr-auto"
-              :disabled="pending || app.offline"
-              @click="
-                dialogError = '';
-                deleting = 'playlist';
-                panel = 'delete';
-              "
-            >
-              删除歌单
-            </button>
-            <button type="button" class="btn" :disabled="pending" @click="dialog?.close()">
-              取消</button
-            ><button class="btn btn-primary" :disabled="pending || app.offline">保存</button>
-          </div>
-        </form>
-        <SongDetails
-          v-else-if="panel === 'details' && selectedSong"
-          :initial-song="selectedSong"
-          :initial-cover-url="selectedSong.coverId ? coverUrls[selectedSong.coverId] : undefined"
-          @close="dialog?.close()"
-          @edit="openSong"
-          @delete="
-            deleting = 'song';
-            panel = 'delete';
-          "
-          @playlists="playlistPicker?.open()"
-        />
-        <div v-else-if="panel === 'delete'" class="grid gap-3">
-          <h2 class="text-lg font-semibold">
-            {{
-              deleting === "song"
-                ? `删除《${details?.title}》？`
-                : `删除歌单「${playlistEdit?.name}」？`
-            }}
-          </h2>
-          <p v-if="deleting === 'playlist'">歌单中的歌曲会保留。</p>
-          <p v-if="dialogError" class="text-sm text-error" role="alert">{{ dialogError }}</p>
-          <div class="flex justify-end gap-2">
-            <button class="btn" :disabled="pending" @click="dialog?.close()">取消</button>
-            <button class="btn btn-error" :disabled="pending || app.offline" @click="update(remove)">
-              确认删除
-            </button>
-          </div>
-        </div>
-      </div>
-      <form method="dialog" class="modal-backdrop">
-        <button tabindex="-1" :disabled="pending || songEditor?.busy">关闭曲库弹窗</button>
-      </form>
-    </dialog>
-    <SongPlaylistPicker v-if="panel === 'details' && details" ref="playlistPicker" />
+    <SongManagementDialog ref="songManagement" :cover-urls="coverUrls" />
   </div>
 </template>

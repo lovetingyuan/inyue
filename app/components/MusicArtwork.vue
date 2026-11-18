@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { X } from "@lucide/vue";
+import { Capacitor } from "@capacitor/core";
 const props = defineProps<{ src?: string | null; zoomable?: boolean }>();
+const artwork = computed(() =>
+  props.src?.startsWith("file://") && Capacitor.isNativePlatform()
+    ? Capacitor.convertFileSrc(props.src)
+    : (props.src ?? undefined),
+);
 const broken = ref(false);
 const preview = useTemplateRef("preview");
 watch(
@@ -17,7 +23,7 @@ watch(
   >
     <img
       v-if="src && !broken"
-      :src="src"
+      :src="artwork"
       alt=""
       class="absolute inset-0 size-full object-cover"
       @error="broken = true"
@@ -41,7 +47,7 @@ watch(
     <Teleport v-if="zoomable && src && !broken" to="body">
       <dialog ref="preview" class="modal" aria-label="封面大图">
         <div class="modal-box relative w-fit max-w-[90vw] p-0">
-          <img :src="src" alt="封面大图" class="max-h-[85dvh] max-w-full object-contain" />
+          <img :src="artwork" alt="封面大图" class="max-h-[85dvh] max-w-full object-contain" />
           <form method="dialog" class="absolute top-2 right-2">
             <button class="btn btn-circle btn-sm" aria-label="关闭封面大图">
               <X class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />

@@ -20,15 +20,18 @@ const logoutConfirm = useTemplateRef<LogoutConfirmDialogExpose>("logoutConfirm")
 const accountTab = useTemplateRef<HTMLButtonElement>("accountTab");
 const aboutTab = useTemplateRef<HTMLButtonElement>("aboutTab");
 const activeTab = ref<SettingsTab>("account");
-const buildInfo = import.meta.client ? window.__INYUE_BUILD_INFO__ : undefined;
+const buildInfo = shallowRef<Window["__INYUE_BUILD_INFO__"]>();
+onMounted(() => {
+  buildInfo.value = window.__INYUE_BUILD_INFO__;
+});
 const buildLabel = computed(() => {
-  const time = buildInfo?.time;
+  const time = buildInfo.value?.time;
   if (!Number.isFinite(time) || !time) return "未知";
   const formatted = new Intl.DateTimeFormat("zh-CN", {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(time));
-  return buildInfo?.hash ? `${formatted} · ${buildInfo.hash}` : formatted;
+  return buildInfo.value?.hash ? `${formatted} · ${buildInfo.value.hash}` : formatted;
 });
 
 function bytes(size: number) {

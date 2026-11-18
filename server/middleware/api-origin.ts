@@ -10,7 +10,8 @@ import {
   setResponseHeaders,
 } from "h3";
 import { hasAccountMail } from "../utils/account-mail";
-import { devOrigin, devPort } from "~~/shared/dev-server.mjs";
+import { androidDevUserAgent, devOrigin, devPort } from "~~/shared/dev-server.mjs";
+import { offlineExpiryHeader, offlineOwnerHeader } from "~~/shared/offline-library";
 
 const mailPaths = new Set([
   "/api/auth/sign-up/email",
@@ -32,6 +33,10 @@ export default defineEventHandler((event) => {
       target.search = search;
       return sendRedirect(event, target.href);
     }
+    if (!apiRequest && getRequestHeader(event, "user-agent")?.endsWith(` ${androidDevUserAgent}`)) {
+      const nuxt = (event.context.nuxt ??= {});
+      nuxt.noSSR = true;
+    }
     useRuntimeConfig(event).public.siteUrl = devOrigin;
   }
   if (!apiRequest) return;
@@ -47,7 +52,8 @@ export default defineEventHandler((event) => {
       "access-control-allow-origin": origin,
       "access-control-allow-methods": "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS",
       "access-control-allow-headers": "Authorization, Content-Type, Range",
-      "access-control-expose-headers": "Set-Auth-Token, Content-Range, Accept-Ranges",
+      "access-control-expose-headers":
+        `Set-Auth-Token, Content-Range, Accept-Ranges, ${offlineExpiryHeader}, ${offlineOwnerHeader}`,
     });
     if (event.method === "OPTIONS") return sendNoContent(event);
   }
