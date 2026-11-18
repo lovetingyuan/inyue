@@ -1,8 +1,15 @@
 <script setup lang="ts">
 defineOptions({ name: "IntegrationPlaybackView" });
 
+type LogoutConfirmDialogExpose = { open: () => void };
+
 const session = useSessionStore();
 const player = useTemplateRef("player");
+const logoutConfirm = useTemplateRef<LogoutConfirmDialogExpose>("logoutConfirm");
+
+function confirmLogout() {
+  void session.logout(() => player.value?.release());
+}
 </script>
 
 <template>
@@ -16,7 +23,7 @@ const player = useTemplateRef("player");
         class="btn btn-sm"
         type="button"
         :disabled="session.signingOut"
-        @click="session.logout(() => player?.release())"
+        @click="logoutConfirm?.open()"
       >
         退出登录
       </button>
@@ -25,5 +32,6 @@ const player = useTemplateRef("player");
     <p v-if="session.logoutError" class="alert alert-error" role="alert">
       {{ session.logoutError }}
     </p>
+    <LogoutConfirmDialog ref="logoutConfirm" @confirm="confirmLogout" />
   </template>
 </template>

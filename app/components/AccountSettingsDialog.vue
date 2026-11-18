@@ -7,6 +7,7 @@ defineOptions({ name: "AccountSettingsDialog" });
 defineProps<{ account: Account }>();
 
 type SettingsTab = "account" | "about";
+type LogoutConfirmDialogExpose = { open: () => void };
 
 const tabs: readonly SettingsTab[] = ["account", "about"];
 const repositoryUrl = "https://github.com/lovetingyuan/inyue";
@@ -15,6 +16,7 @@ const repositoryLabel = "github.com/lovetingyuan/inyue";
 const session = useSessionStore();
 const { theme, offline, native } = storeToRefs(useAppStore());
 const profile = useTemplateRef<HTMLDialogElement>("profile");
+const logoutConfirm = useTemplateRef<LogoutConfirmDialogExpose>("logoutConfirm");
 const accountTab = useTemplateRef<HTMLButtonElement>("accountTab");
 const aboutTab = useTemplateRef<HTMLButtonElement>("aboutTab");
 const activeTab = ref<SettingsTab>("account");
@@ -137,7 +139,7 @@ defineExpose({
               type="button"
               class="btn btn-error btn-outline btn-sm shrink-0"
               :disabled="session.signingOut || offline"
-              @click="session.logout()"
+              @click="logoutConfirm?.open()"
             >
               退出登录
             </button>
@@ -232,4 +234,5 @@ defineExpose({
       <button tabindex="-1" :disabled="session.signingOut">关闭账户弹窗</button>
     </form>
   </dialog>
+  <LogoutConfirmDialog ref="logoutConfirm" @confirm="session.logout()" />
 </template>
