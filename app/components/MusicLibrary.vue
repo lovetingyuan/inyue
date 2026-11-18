@@ -145,7 +145,7 @@ function playFirst() {
             @click="playFirst"
           >
             <Play
-              class="size-5 shrink-0"
+              class="size-4 shrink-0"
               :stroke-width="1.8"
               aria-hidden="true"
               fill="currentColor"

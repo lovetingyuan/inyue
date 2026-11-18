@@ -196,7 +196,7 @@ defineExpose({ open });
           <button
             v-if="playlistEdit"
             type="button"
-            class="btn btn-error btn-outline mr-auto"
+            class="btn btn-error btn-ghost mr-auto"
             :disabled="pending || app.offline"
             @click="
               dialogError = '';
