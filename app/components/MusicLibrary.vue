@@ -206,13 +206,15 @@ function playFirst() {
                 :aria-current="current?.id === song.id ? 'true' : undefined"
                 :disabled="app.offline && !offlineAudio?.has(song.id)"
                 :aria-description="
-                  current?.id === song.id
-                    ? playbackLoading
-                      ? '正在加载'
-                      : playing
-                        ? '正在播放'
-                        : undefined
-                    : undefined
+                  app.offline && !offlineAudio?.has(song.id)
+                    ? '音频未缓存'
+                    : current?.id === song.id
+                      ? playbackLoading
+                        ? '正在加载'
+                        : playing
+                          ? '正在播放'
+                          : undefined
+                      : undefined
                 "
                 @click="play(song)"
               >
@@ -250,18 +252,13 @@ function playFirst() {
                 />
                 <span class="min-w-0 flex-1">
                   <span
-                    class="block truncate text-sm font-semibold"
+                    class="block truncate text-sm font-semibold group-disabled:opacity-65"
                     :class="{ 'text-primary': current?.id === song.id }"
                     >{{ song.title }}</span
                   >
                   <span class="block truncate text-xs text-base-content/65"
                     >{{ song.artist
                     }}<span v-if="song.album" class="lg:hidden"> · {{ song.album }}</span></span
-                  >
-                  <span
-                    v-if="app.offline && !offlineAudio?.has(song.id)"
-                    class="text-xs text-base-content/65"
-                    >音频未缓存</span
                   >
                 </span>
                 <span class="hidden w-[26%] truncate text-xs text-base-content/65 lg:block">{{
