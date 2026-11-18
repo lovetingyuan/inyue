@@ -147,7 +147,9 @@ export default defineNuxtConfig({
 
   hooks: {
     ready(nuxt) {
-      if (nuxt.options.dev || !nuxt.options.ssr) return;
+      if (nuxt.options.dev || !nuxt.options.ssr) {
+        return;
+      }
 
       nuxt.hook("pwa:beforeBuildServiceWorker", ({ generateSW }) => {
         generateSW?.runtimeCaching?.unshift({
@@ -172,7 +174,9 @@ export default defineNuxtConfig({
     },
     listen(server) {
       const address = server.address();
-      if (address && typeof address !== "string" && address.port === devPort) return;
+      if (address && typeof address !== "string" && address.port === devPort) {
+        return;
+      }
       console.error(`开发端口固定为 ${devPort}。`);
       process.exit(1);
     },
@@ -274,7 +278,9 @@ export default defineNuxtConfig({
       auth: { clientOnly: process.env.NODE_ENV !== "development" },
       hooks: {
         close(nuxt) {
-          if (nuxt.options.dev) return;
+          if (nuxt.options.dev) {
+            return;
+          }
 
           // Nuxt adds a legacy dist link after the static build.
           const root = nuxt.options.rootDir;

@@ -59,27 +59,41 @@ function clearPlaylistCover() {
 }
 
 async function savePlaylist() {
-  if (pending.value || app.offline) return;
+  if (pending.value || app.offline) {
+    return;
+  }
   dialogError.value = "";
-  if (!playlistName.value) playlistErrors.name = "请填写歌单名称。";
-  if (!playlistName.value || (playlistCover.value?.size ?? 0) > coverMaxBytes) return;
+  if (!playlistName.value) {
+    playlistErrors.name = "请填写歌单名称。";
+  }
+  if (!playlistName.value || (playlistCover.value?.size ?? 0) > coverMaxBytes) {
+    return;
+  }
   const body = new FormData();
   body.set("name", playlistName.value);
-  if (playlistCover.value) body.set("cover", playlistCover.value);
-  else if (removeCover.value) body.set("removeCover", "true");
+  if (playlistCover.value) {
+    body.set("cover", playlistCover.value);
+  } else if (removeCover.value) {
+    body.set("removeCover", "true");
+  }
   try {
     await playlistSave.mutateAsync({ playlistId: playlistEdit.value?.id, body });
     dialog.value?.close();
   } catch (cause) {
     const { field, message } = libraryFormError(cause);
-    if (field === "name" || field === "cover") playlistErrors[field] = message;
-    else dialogError.value = message;
+    if (field === "name" || field === "cover") {
+      playlistErrors[field] = message;
+    } else {
+      dialogError.value = message;
+    }
   }
 }
 
 async function removePlaylist() {
   const id = playlistEdit.value?.id;
-  if (!id || pending.value || app.offline) return;
+  if (!id || pending.value || app.offline) {
+    return;
+  }
   dialogError.value = "";
   try {
     await libraryDelete.mutateAsync({ kind: "playlist", id });

@@ -37,10 +37,13 @@ export function formText(
 }
 
 export function coverUpload(part?: MultiPartData) {
-  if (!part) return null;
+  if (!part) {
+    return null;
+  }
   const { data } = part;
-  if (data.length > coverMaxBytes)
+  if (data.length > coverMaxBytes) {
     throw createError({ statusCode: 413, statusMessage: "COVER_SIZE" });
+  }
   const jpeg = data.length > 8 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
   const png =
     data.length >= 33 &&
@@ -52,16 +55,19 @@ export function coverUpload(part?: MultiPartData) {
     data.subarray(8, 12).toString() === "WEBP" &&
     ["VP8 ", "VP8L", "VP8X"].includes(data.subarray(12, 16).toString());
   const contentType = jpeg ? "image/jpeg" : png ? "image/png" : webp ? "image/webp" : null;
-  if (!part.filename || !contentType)
+  if (!part.filename || !contentType) {
     throw createError({ statusCode: 415, statusMessage: "UNSUPPORTED_COVER" });
+  }
   return { data, contentType };
 }
 
 export async function audioUpload(part?: MultiPartData) {
-  if (!part?.filename || !part.data.length)
+  if (!part?.filename || !part.data.length) {
     throw createError({ statusCode: 400, statusMessage: "MISSING_AUDIO" });
-  if (part.data.length > audioMaxBytes)
+  }
+  if (part.data.length > audioMaxBytes) {
     throw createError({ statusCode: 413, statusMessage: "AUDIO_SIZE" });
+  }
   const { parseBuffer } = await import("music-metadata");
   const { format } = await parseBuffer(part.data, undefined, {
     skipCovers: true,

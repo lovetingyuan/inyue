@@ -24,7 +24,9 @@ export async function withLibraryFiles<T>(
         ]
       : [],
   );
-  if (!rows.length) return save(uploads.map(() => null));
+  if (!rows.length) {
+    return save(uploads.map(() => null));
+  }
   const bucket = mediaBucket(event);
   const quotaBytes = libraryQuota(event);
   const ids = rows.map(({ id }) => id);
@@ -45,7 +47,9 @@ export async function withLibraryFiles<T>(
       .run();
     for (const { id, data, contentType, bytes } of rows) {
       const stored = await bucket.put(id, data, { httpMetadata: { contentType } });
-      if (stored.size !== bytes) throw new Error("R2 object size mismatch");
+      if (stored.size !== bytes) {
+        throw new Error("R2 object size mismatch");
+      }
     }
     let index = 0;
     return await save(uploads.map((upload) => (upload ? (rows[index++]?.id ?? null) : null)));

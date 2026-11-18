@@ -25,37 +25,50 @@ const changes = computed(() => {
 });
 
 async function open() {
-  if (dialog.value?.open || !song.value) return;
+  if (dialog.value?.open || !song.value) {
+    return;
+  }
   selected.value = new Set(song.value.playlistIds);
   error.value = "";
   playlistErrors.value.clear();
   partialSave.value = false;
   await nextTick();
   showMusicDialog(dialog.value);
-  if (list.value) list.value.scrollTop = 0;
+  if (list.value) {
+    list.value.scrollTop = 0;
+  }
   requestAnimationFrame(() => {
-    if (dialog.value?.open && !dialog.value.contains(document.activeElement))
+    if (dialog.value?.open && !dialog.value.contains(document.activeElement)) {
       heading.value?.focus();
+    }
   });
 }
 
 async function save() {
-  if (app.offline) return;
+  if (app.offline) {
+    return;
+  }
   const songId = song.value?.id;
-  if (saving.value || !songId || !changes.value.length) return;
+  if (saving.value || !songId || !changes.value.length) {
+    return;
+  }
   error.value = "";
   playlistErrors.value.clear();
   partialSave.value = false;
   const updates = changes.value.map(({ id }) => ({ id, included: selected.value.has(id) }));
   try {
     const result = await membership.mutateAsync({ songId, changes: updates });
-    if (result.succeeded.length === updates.length) dialog.value?.close();
-    else {
+    if (result.succeeded.length === updates.length) {
+      dialog.value?.close();
+    } else {
       partialSave.value = result.succeeded.length > 0;
       error.value = result.error;
       for (const { id, message } of result.failed) {
-        if (playlists.value.some((item) => item.id === id)) playlistErrors.value.set(id, message);
-        else error.value ||= message;
+        if (playlists.value.some((item) => item.id === id)) {
+          playlistErrors.value.set(id, message);
+        } else {
+          error.value ||= message;
+        }
       }
     }
   } catch (cause) {

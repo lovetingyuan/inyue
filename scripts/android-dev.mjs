@@ -84,15 +84,21 @@ async function develop(target) {
         shutdown.signal.addEventListener("abort", resolve, { once: true }),
       );
       const error = await Promise.race([exited, stopped]);
-      if (error && !shutdown.signal.aborted) throw error;
+      if (error && !shutdown.signal.aborted) {
+        throw error;
+      }
     }
   } catch (error) {
-    if (!shutdown.signal.aborted) throw error;
+    if (!shutdown.signal.aborted) {
+      throw error;
+    }
   } finally {
     release?.();
     process.removeListener("SIGINT", stop);
     process.removeListener("SIGTERM", stop);
-    if (server?.exitCode === null && server.signalCode === null) server.kill();
+    if (server?.exitCode === null && server.signalCode === null) {
+      server.kill();
+    }
   }
 }
 
@@ -102,9 +108,13 @@ function lockDeployment() {
   try {
     writeFileSync(lock, String(process.pid), { flag: "wx" });
   } catch (error) {
-    if (error.code !== "EEXIST") throw error;
+    if (error.code !== "EEXIST") {
+      throw error;
+    }
     const owner = Number(readFileSync(lock, "utf8"));
-    if (!owner || isRunning(owner)) throw new Error("已有 Android 部署正在运行，请等它完成。");
+    if (!owner || isRunning(owner)) {
+      throw new Error("已有 Android 部署正在运行，请等它完成。");
+    }
     rmSync(lock, { force: true });
     writeFileSync(lock, String(process.pid), { flag: "wx" });
   }
@@ -112,7 +122,9 @@ function lockDeployment() {
 }
 
 function isRunning(pid) {
-  if (!Number.isSafeInteger(pid) || pid < 1) return false;
+  if (!Number.isSafeInteger(pid) || pid < 1) {
+    return false;
+  }
   try {
     process.kill(pid, 0);
     return true;
@@ -145,11 +157,15 @@ async function waitForServer(server, exited, signal) {
   const waiting = AbortSignal.any([signal, timeout, startup.signal]);
   try {
     while (!waiting.aborted) {
-      if (hasProjectServer(server?.pid) && (await nuxtResponds(waiting))) return;
+      if (hasProjectServer(server?.pid) && (await nuxtResponds(waiting))) {
+        return;
+      }
       await setTimeout(400, undefined, { signal: waiting });
     }
   } catch (error) {
-    if (!waiting.aborted) throw error;
+    if (!waiting.aborted) {
+      throw error;
+    }
   }
   startup.signal.throwIfAborted();
   signal.throwIfAborted();
@@ -181,20 +197,27 @@ async function installApp(adb, device, signal) {
     run(process.execPath, [capacitor, "sync", "android"], {
       env: { ...process.env, INYUE_ANDROID_DEV: "1" },
     });
-    if (windows)
+    if (windows) {
       run(process.env.ComSpec ?? "cmd.exe", ["/d", "/c", "gradlew.bat", "assembleDebug"], {
         cwd: "android",
       });
-    else run("./gradlew", ["assembleDebug"], { cwd: "android" });
+    } else {
+      run("./gradlew", ["assembleDebug"], { cwd: "android" });
+    }
   } finally {
-    if (original) writeFileSync(configPath, original);
-    else rmSync(configPath, { force: true });
+    if (original) {
+      writeFileSync(configPath, original);
+    } else {
+      rmSync(configPath, { force: true });
+    }
   }
 
   run(adb, ["-s", device, "install", "-r", "android/app/build/outputs/apk/debug/app-debug.apk"]);
   const ready = await nuxtResponds(signal);
   signal.throwIfAborted();
-  if (!ready) throw new Error(`Android 安装完成，但 Nuxt 开发服务已断开（${devOrigin}）。`);
+  if (!ready) {
+    throw new Error(`Android 安装完成，但 Nuxt 开发服务已断开（${devOrigin}）。`);
+  }
   run(adb, ["-s", device, "reverse", `tcp:${port}`, `tcp:${port}`]);
   // Start after forwarding and let the WebView render without blocking ADB.
   run(adb, ["-s", device, "shell", "am", "start", "-S", "-n", "com.tingyuan.inyue/.MainActivity"]);

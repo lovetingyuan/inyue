@@ -49,7 +49,9 @@ async function open(song: Song) {
 
 async function removeSong() {
   const id = details.value?.id;
-  if (!id || pending.value || app.offline) return;
+  if (!id || pending.value || app.offline) {
+    return;
+  }
   dialogError.value = "";
   try {
     await libraryDelete.mutateAsync({ kind: "song", id });

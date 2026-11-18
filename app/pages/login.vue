@@ -34,7 +34,9 @@ const { data: authProviders } = useQuery({
 });
 
 onMounted(() => {
-  if (googleFailed) void router.replace({ path: "/login", query: { redirect: redirect.value } });
+  if (googleFailed) {
+    void router.replace({ path: "/login", query: { redirect: redirect.value } });
+  }
 });
 </script>
 

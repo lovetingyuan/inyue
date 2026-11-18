@@ -35,7 +35,9 @@ const invalidToken = ref(false);
 const invalidReset = computed(() => mode.value === "reset" && (!props.token || invalidToken.value));
 
 function clearCredentialsError() {
-  if (!credentialsInvalid.value) return;
+  if (!credentialsInvalid.value) {
+    return;
+  }
   credentialsInvalid.value = false;
   accountFields.password = "";
 }
@@ -57,7 +59,9 @@ function validateEmail() {
 }
 
 async function run(action: () => Promise<void>) {
-  if (busy.value) return;
+  if (busy.value) {
+    return;
+  }
   busy.value = true;
   notice.value = "";
   error.value = "";
@@ -75,8 +79,9 @@ async function run(action: () => Promise<void>) {
         cause !== null &&
         "code" in cause &&
         cause.code === "USER_CANCELLED"
-      )
+      ) {
         return;
+      }
       error.value = googleLoginError(code);
       return;
     }
@@ -113,15 +118,24 @@ async function run(action: () => Promise<void>) {
 }
 
 async function submit() {
-  if (mode.value !== "reset") validateEmail();
-  if (mode.value === "register" && !name.value) accountFields.name = "请填写昵称。";
-  if (mode.value !== "forgot") {
-    if (!password.value) accountFields.password = "请填写密码。";
-    else if (password.value.length < 8) accountFields.password = "密码至少需要 8 个字符。";
-    else if (mode.value !== "login" && password.value.length > 128)
-      accountFields.password = "密码最多允许 128 个字符。";
+  if (mode.value !== "reset") {
+    validateEmail();
   }
-  if (accountFields.name || accountFields.email || accountFields.password) return;
+  if (mode.value === "register" && !name.value) {
+    accountFields.name = "请填写昵称。";
+  }
+  if (mode.value !== "forgot") {
+    if (!password.value) {
+      accountFields.password = "请填写密码。";
+    } else if (password.value.length < 8) {
+      accountFields.password = "密码至少需要 8 个字符。";
+    } else if (mode.value !== "login" && password.value.length > 128) {
+      accountFields.password = "密码最多允许 128 个字符。";
+    }
+  }
+  if (accountFields.name || accountFields.email || accountFields.password) {
+    return;
+  }
   const submittedPassword = password.value;
   password.value = "";
   if (mode.value === "register") {
@@ -136,7 +150,9 @@ async function submit() {
     await execute({ type: "forgot", email: email.value });
     notice.value = "如果该邮箱已注册，请查收重置邮件。";
   } else if (mode.value === "reset") {
-    if (!props.token) return;
+    if (!props.token) {
+      return;
+    }
     await execute({ type: "reset", token: props.token, password: submittedPassword });
     emit("success", "");
   } else {
@@ -146,20 +162,26 @@ async function submit() {
 }
 
 async function resend() {
-  if (!validateEmail()) return;
+  if (!validateEmail()) {
+    return;
+  }
   await execute({ type: "resend", email: email.value });
   notice.value = "请查收验证邮件。";
 }
 
 async function google() {
-  if (!props.googleClientId) return;
+  if (!props.googleClientId) {
+    return;
+  }
   const callbackURL = libraryReturnPath(props.redirect) ?? "/";
   const errorCallbackURL =
     callbackURL === "/"
       ? "/login?google=failed"
       : `/login?${new URLSearchParams({ google: "failed", redirect: callbackURL })}`;
   await execute({ type: "google", clientId: props.googleClientId, callbackURL, errorCallbackURL });
-  if (app.native) await session.refreshAccount(true);
+  if (app.native) {
+    await session.refreshAccount(true);
+  }
 }
 </script>
 

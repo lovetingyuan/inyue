@@ -14,7 +14,9 @@ const app = useAppStore();
 const covers = useCoverQuery(() => (song.value.coverId ? [song.value.coverId] : []));
 const coverUrl = computed(() => {
   const id = song.value.coverId;
-  if (!id) return undefined;
+  if (!id) {
+    return undefined;
+  }
   return (
     covers.urls.value[id] ?? (id === props.initialSong.coverId ? props.initialCoverUrl : undefined)
   );

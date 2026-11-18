@@ -13,7 +13,9 @@ export default defineEventHandler(async (event) => {
     .where(playlistOwner(user.id, id))
     .returning({ id: playlists.id })
     .get();
-  if (!removed) throw createError({ statusCode: 404, statusMessage: "PLAYLIST_NOT_FOUND" });
+  if (!removed) {
+    throw createError({ statusCode: 404, statusMessage: "PLAYLIST_NOT_FOUND" });
+  }
   await cleanupUserFiles(event, user.id);
   return sendNoContent(event);
 });

@@ -217,7 +217,9 @@ const second = {
 const sample = await readFile("temp/integration-1.mp3");
 function multipart(path, fields, headers = first, method = "POST") {
   const form = new FormData();
-  for (const [key, value] of Object.entries(fields)) form.set(key, value);
+  for (const [key, value] of Object.entries(fields)) {
+    form.set(key, value);
+  }
   return fetch(new URL(path, origin), { method, headers: { ...headers, origin }, body: form });
 }
 const audio = new File([sample], "sample.mp3", { type: "audio/mpeg" });

@@ -66,8 +66,12 @@ const playlistCoverUrl = computed(() => {
 
 async function retryLibrary() {
   await Promise.all([songQuery.refetch(), retryPlaylists()]);
-  if (songCovers.error.value) void songCovers.refetch();
-  if (playlistCovers.error.value) void playlistCovers.refetch();
+  if (songCovers.error.value) {
+    void songCovers.refetch();
+  }
+  if (playlistCovers.error.value) {
+    void playlistCovers.refetch();
+  }
 }
 
 function play(song: Song) {
@@ -76,7 +80,9 @@ function play(song: Song) {
 
 function playFirst() {
   const song = firstPlayable.value;
-  if (song) void play(song);
+  if (song) {
+    void play(song);
+  }
 }
 </script>
 

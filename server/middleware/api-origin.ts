@@ -40,7 +40,9 @@ export default defineEventHandler((event) => {
     }
     useRuntimeConfig(event).public.siteUrl = devOrigin;
   }
-  if (!apiRequest) return;
+  if (!apiRequest) {
+    return;
+  }
   const config = useRuntimeConfig(event);
   const origin = getRequestHeader(event, "origin");
   const siteOrigin = config.public.siteUrl ? new URL(config.public.siteUrl).origin : "";
@@ -55,7 +57,9 @@ export default defineEventHandler((event) => {
       "access-control-allow-headers": "Authorization, Content-Type, Range",
       "access-control-expose-headers": `Set-Auth-Token, Content-Range, Accept-Ranges, ${offlineExpiryHeader}, ${offlineOwnerHeader}`,
     });
-    if (event.method === "OPTIONS") return sendNoContent(event);
+    if (event.method === "OPTIONS") {
+      return sendNoContent(event);
+    }
   }
   const pathname = event.path.split("?")[0]?.replace(/\/+$/, "") ?? "";
   if (event.method === "POST" && mailPaths.has(pathname) && !hasAccountMail(config)) {

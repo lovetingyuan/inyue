@@ -27,7 +27,9 @@ export default defineEventHandler(async (event) => {
       .where(playlistOwner(user.id, id))
       .returning(playlistFields)
       .get();
-    if (!updated) throw createError({ statusCode: 404, statusMessage: "PLAYLIST_NOT_FOUND" });
+    if (!updated) {
+      throw createError({ statusCode: 404, statusMessage: "PLAYLIST_NOT_FOUND" });
+    }
     return updated;
   }).catch(handlePlaylistWriteError);
   await cleanupUserFiles(event, user.id);

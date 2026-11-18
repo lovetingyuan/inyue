@@ -26,7 +26,9 @@ const drawerTrigger = useTemplateRef<HTMLButtonElement>("drawerTrigger");
 const drawerClose = useTemplateRef<HTMLButtonElement>("drawerClose");
 
 watch(desktop, (matches) => {
-  if (matches) drawerOpen.value = false;
+  if (matches) {
+    drawerOpen.value = false;
+  }
 });
 watch(
   () => route.path,
@@ -37,8 +39,11 @@ watch(
 watch(
   drawerOpen,
   (open) => {
-    if (open) drawerClose.value?.focus();
-    else drawerTrigger.value?.focus();
+    if (open) {
+      drawerClose.value?.focus();
+    } else {
+      drawerTrigger.value?.focus();
+    }
   },
   { flush: "post" },
 );

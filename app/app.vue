@@ -43,7 +43,9 @@ const libraryVisible = computed(
 );
 const showIntegration = computed(() => session.account && integrationPlayback && !app.offline);
 const redirect = computed(() => {
-  if (!session.ready || app.offline || session.signingOut) return undefined;
+  if (!session.ready || app.offline || session.signingOut) {
+    return undefined;
+  }
   const { path, query } = route.value;
   if (path === "/") {
     if (typeof query.token === "string" || query.error === "INVALID_TOKEN") {
@@ -57,8 +59,9 @@ const redirect = computed(() => {
         : { path: "/login", query: { google: "failed", error: query.error } };
     }
   }
-  if (session.account && accountRoute.value)
+  if (session.account && accountRoute.value) {
     return { path: libraryReturnPath(query.redirect) ?? "/" };
+  }
   if (!session.account && !accountRoute.value) {
     return { path: "/login", query: { redirect: libraryReturnPath(path) } };
   }
@@ -75,11 +78,15 @@ if (import.meta.server) {
   onServerPrefetch(async () => {
     await session.refreshAccount();
     const target = redirect.value;
-    if (target) await nuxtApp.runWithContext(() => navigateTo(target));
+    if (target) {
+      await nuxtApp.runWithContext(() => navigateTo(target));
+    }
   });
 } else {
   watch(redirect, (target) => {
-    if (target) void router.replace(target);
+    if (target) {
+      void router.replace(target);
+    }
   });
 }
 </script>

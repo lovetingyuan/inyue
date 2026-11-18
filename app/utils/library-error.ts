@@ -33,13 +33,18 @@ export function libraryErrorCode(error: unknown) {
 }
 
 export function libraryFormError(error: unknown) {
-  if (typeof error !== "object" || error === null) return { message: "操作失败，请重试。" };
-  if ("statusCode" in error && error.statusCode === 401)
+  if (typeof error !== "object" || error === null) {
+    return { message: "操作失败，请重试。" };
+  }
+  if ("statusCode" in error && error.statusCode === 401) {
     return { message: "登录已失效，请重新登录。" };
+  }
   const code = libraryErrorCode(error);
   const message =
     typeof code === "string" && Object.hasOwn(messages, code) ? messages[code] : undefined;
-  if (!message) return { message: "操作失败，请检查网络后重试。" };
+  if (!message) {
+    return { message: "操作失败，请检查网络后重试。" };
+  }
   switch (code) {
     case "AUDIO_SIZE":
     case "MISSING_AUDIO":
@@ -53,8 +58,9 @@ export function libraryFormError(error: unknown) {
     case "INVALID_METADATA": {
       const body = libraryErrorBody(error);
       const details = "data" in body ? body.data : undefined;
-      if (typeof details !== "object" || details === null || !("field" in details))
+      if (typeof details !== "object" || details === null || !("field" in details)) {
         return { message };
+      }
       const reason = "reason" in details ? details.reason : undefined;
       const fieldMessage =
         reason === "required"

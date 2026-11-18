@@ -6,8 +6,9 @@ import { session, user } from "../database/auth-schema";
 const encoder = new TextEncoder();
 
 async function mediaKey(secret: string) {
-  if (secret.length < 32)
+  if (secret.length < 32) {
     throw createError({ statusCode: 503, statusMessage: "Media signing is not configured" });
+  }
   return crypto.subtle.importKey(
     "raw",
     encoder.encode(secret),
@@ -37,8 +38,9 @@ export async function verifyMedia(
   expires: number,
   signature: string,
 ) {
-  if (!/^[\da-f]{64}$/.test(signature) || !Number.isSafeInteger(expires) || expires <= Date.now())
+  if (!/^[\da-f]{64}$/.test(signature) || !Number.isSafeInteger(expires) || expires <= Date.now()) {
     return false;
+  }
   return crypto.subtle.verify(
     "HMAC",
     await mediaKey(secret),

@@ -29,8 +29,12 @@ let releaseOperation: Promise<void> | undefined;
 
 async function load() {
   const { data: urls } = await tracks.refetch(true);
-  if (releaseOperation) return;
-  if (!urls?.length) throw new Error("没有可播放的测试音频。");
+  if (releaseOperation) {
+    return;
+  }
+  if (!urls?.length) {
+    throw new Error("没有可播放的测试音频。");
+  }
   const { Playlist, RmxAudioStatusMessage } = await import("@dwbn/capacitor-plugin-playlist");
   if (!player) {
     await Playlist.initialize();
@@ -40,8 +44,12 @@ async function load() {
         status.value = "播放失败，请检查网络或重新载入。";
         return;
       }
-      if (["1", "2", "3"].includes(event.trackId)) track.value = event.trackId;
-      if ("currentPosition" in event.value) position.value = event.value.currentPosition;
+      if (["1", "2", "3"].includes(event.trackId)) {
+        track.value = event.trackId;
+      }
+      if ("currentPosition" in event.value) {
+        position.value = event.value.currentPosition;
+      }
     });
   }
   const items: AudioTrack[] = urls.map(({ id, url }) => ({
@@ -66,7 +74,9 @@ async function load() {
 }
 
 function run(action: () => Promise<void> | undefined) {
-  if (busy.value || releaseOperation) return;
+  if (busy.value || releaseOperation) {
+    return;
+  }
   busy.value = true;
   operation = Promise.resolve()
     .then(action)
@@ -83,7 +93,9 @@ function run(action: () => Promise<void> | undefined) {
 
 function release() {
   return (releaseOperation ??= Promise.resolve(operation).then(async () => {
-    if (!player) return;
+    if (!player) {
+      return;
+    }
     try {
       await listener?.remove();
     } finally {

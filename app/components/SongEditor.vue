@@ -59,14 +59,20 @@ async function selectAudio(event: Event) {
   fieldErrors.cover = "";
   audioNotice.value = "";
   error.value = "";
-  if (!file) return;
+  if (!file) {
+    return;
+  }
   if (file.size > audioMaxBytes) {
     fieldErrors.audio = "MP3 不能超过 15 MiB。";
-    if (audioInput.value) audioInput.value.value = "";
+    if (audioInput.value) {
+      audioInput.value.value = "";
+    }
     return;
   }
   audio.value = file;
-  for (const { name } of fields) fieldErrors[name] = "";
+  for (const { name } of fields) {
+    fieldErrors[name] = "";
+  }
   fieldErrors.description = "";
   form.artist = "";
   form.album = "";
@@ -109,7 +115,9 @@ async function selectAudio(event: Event) {
 }
 
 function selectCoverFile(event: Event) {
-  if (!(event.target instanceof HTMLInputElement)) return;
+  if (!(event.target instanceof HTMLInputElement)) {
+    return;
+  }
   cover.value = event.target.files?.[0];
   event.target.value = "";
   oversizedCover.value = (cover.value?.size ?? 0) > coverMaxBytes;
@@ -125,24 +133,49 @@ function clearCover() {
 }
 
 async function save() {
-  if (app.offline) return;
-  if (busy.value || reading.value) return;
-  error.value = "";
-  if (!props.song && !audio.value) fieldErrors.audio ||= "请选择 MP3 文件。";
-  if (!form.title) fieldErrors.title = "请填写歌曲名。";
-  if (!form.artist) fieldErrors.artist = "请填写歌手。";
-  if (form.year && !/^[1-9]\d{3}$/.test(form.year))
-    fieldErrors.year = "请输入 1000 至 9999 的四位年份。";
-  for (const { name } of fields) {
-    if (name !== "year" && form[name].length > 250) fieldErrors[name] = "最多填写 250 字。";
+  if (app.offline) {
+    return;
   }
-  if (form.description.length > 4000) fieldErrors.description = "最多填写 4000 字。";
-  if (coverError.value || Object.values(fieldErrors).some(Boolean)) return;
+  if (busy.value || reading.value) {
+    return;
+  }
+  error.value = "";
+  if (!props.song && !audio.value) {
+    fieldErrors.audio ||= "请选择 MP3 文件。";
+  }
+  if (!form.title) {
+    fieldErrors.title = "请填写歌曲名。";
+  }
+  if (!form.artist) {
+    fieldErrors.artist = "请填写歌手。";
+  }
+  if (form.year && !/^[1-9]\d{3}$/.test(form.year)) {
+    fieldErrors.year = "请输入 1000 至 9999 的四位年份。";
+  }
+  for (const { name } of fields) {
+    if (name !== "year" && form[name].length > 250) {
+      fieldErrors[name] = "最多填写 250 字。";
+    }
+  }
+  if (form.description.length > 4000) {
+    fieldErrors.description = "最多填写 4000 字。";
+  }
+  if (coverError.value || Object.values(fieldErrors).some(Boolean)) {
+    return;
+  }
   const body = new FormData();
-  for (const [name, value] of Object.entries(form)) body.set(name, value);
-  if (audio.value) body.set("audio", audio.value);
-  if (cover.value) body.set("cover", cover.value);
-  if (removeCover.value) body.set("removeCover", "true");
+  for (const [name, value] of Object.entries(form)) {
+    body.set(name, value);
+  }
+  if (audio.value) {
+    body.set("audio", audio.value);
+  }
+  if (cover.value) {
+    body.set("cover", cover.value);
+  }
+  if (removeCover.value) {
+    body.set("removeCover", "true");
+  }
   try {
     await saveSong.mutateAsync({ songId: props.song?.id, body });
     emit("saved");

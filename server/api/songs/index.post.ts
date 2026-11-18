@@ -20,7 +20,9 @@ export default defineEventHandler(async (event) => {
     user.id,
     [audio, cover],
     async ([audioId, coverId]) => {
-      if (!audioId) throw createError({ statusCode: 500 });
+      if (!audioId) {
+        throw createError({ statusCode: 500 });
+      }
       return db
         .insert(songs)
         .values({

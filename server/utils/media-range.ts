@@ -1,6 +1,8 @@
 export function mediaRange(value: string, size: number) {
   const match = /^bytes=(\d*)-(\d*)$/i.exec(value);
-  if (!match || size < 1) return null;
+  if (!match || size < 1) {
+    return null;
+  }
   const [, start, end] = match;
   if (!start) {
     const length = Math.min(Number(end), size);

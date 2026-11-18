@@ -22,7 +22,8 @@ export function mediaBucket(event: H3Event) {
 }
 
 export function requireMediaBucket(bucket: unknown) {
-  if (!isMediaBucket(bucket))
+  if (!isMediaBucket(bucket)) {
     throw createError({ statusCode: 503, statusMessage: "R2 binding MEDIA is unavailable" });
+  }
   return bucket;
 }

@@ -3,7 +3,9 @@ import { defineNuxtPlugin } from "#app";
 import { Capacitor } from "@capacitor/core";
 
 export default defineNuxtPlugin((nuxtApp) => {
-  if (!Capacitor.isNativePlatform()) return;
+  if (!Capacitor.isNativePlatform()) {
+    return;
+  }
 
   nuxtApp.hook("app:mounted", async () => {
     await nextTick();

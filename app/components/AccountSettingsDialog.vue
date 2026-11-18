@@ -31,7 +31,9 @@ onMounted(() => {
 });
 const buildLabel = computed(() => {
   const time = buildInfo.value?.time;
-  if (!Number.isFinite(time) || !time) return "未知";
+  if (!Number.isFinite(time) || !time) {
+    return "未知";
+  }
   const formatted = new Intl.DateTimeFormat("zh-CN", {
     dateStyle: "medium",
     timeStyle: "short",
@@ -55,11 +57,21 @@ function activateTab(tab: SettingsTab, moveFocus = false) {
 function handleTabKeydown(event: KeyboardEvent, current: SettingsTab) {
   const index = tabs.indexOf(current);
   let next: SettingsTab | undefined;
-  if (event.key === "ArrowRight") next = tabs[(index + 1) % tabs.length];
-  if (event.key === "ArrowLeft") next = tabs[(index - 1 + tabs.length) % tabs.length];
-  if (event.key === "Home") next = tabs[0];
-  if (event.key === "End") next = tabs.at(-1);
-  if (!next) return;
+  if (event.key === "ArrowRight") {
+    next = tabs[(index + 1) % tabs.length];
+  }
+  if (event.key === "ArrowLeft") {
+    next = tabs[(index - 1 + tabs.length) % tabs.length];
+  }
+  if (event.key === "Home") {
+    next = tabs[0];
+  }
+  if (event.key === "End") {
+    next = tabs.at(-1);
+  }
+  if (!next) {
+    return;
+  }
   event.preventDefault();
   activateTab(next, true);
 }

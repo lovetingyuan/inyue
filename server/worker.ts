@@ -18,7 +18,9 @@ export default {
     }
     const response = await worker.fetch(request, env, context);
     const length = response.headers.get("x-music-content-length");
-    if (request.method !== "HEAD" || length === null) return response;
+    if (request.method !== "HEAD" || length === null) {
+      return response;
+    }
     // Nitro's Node response adapter drops Content-Length on HEAD.
     const headers = new Headers(response.headers);
     headers.delete("x-music-content-length");

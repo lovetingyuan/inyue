@@ -23,8 +23,12 @@ export function useSongSave() {
       return _data;
     },
     onSuccess: async (song, { songId }, { userId, generation }) => {
-      if (session.generation !== generation) return;
-      if (songId && song) player.updateTrackYear(songId, song.year);
+      if (session.generation !== generation) {
+        return;
+      }
+      if (songId && song) {
+        player.updateTrackYear(songId, song.year);
+      }
       player.invalidateQueue();
       const scope = session.offlineScope;
       if (scope && song) {
@@ -83,9 +87,14 @@ export function useLibraryDelete() {
     },
     onMutate: () => ({ userId: session.userId, generation: session.generation }),
     async onSuccess(_, { kind, id }, { userId, generation }) {
-      if (session.generation !== generation) return;
-      if (kind === "song") library.songId = undefined;
-      else if (library.playlist === id) library.selectPlaylist("default");
+      if (session.generation !== generation) {
+        return;
+      }
+      if (kind === "song") {
+        library.songId = undefined;
+      } else if (library.playlist === id) {
+        library.selectPlaylist("default");
+      }
       const scope = session.offlineScope;
       if (scope) {
         const { removeOfflineSong, removeOfflinePlaylist } =
@@ -94,9 +103,13 @@ export function useLibraryDelete() {
           await removeOfflineSong(scope, id).catch(() => undefined);
           const { removeOfflineAudio } = await import("~/utils/offline-media");
           void removeOfflineAudio(scope, id).catch(() => undefined);
-        } else await removeOfflinePlaylist(scope, id).catch(() => undefined);
+        } else {
+          await removeOfflinePlaylist(scope, id).catch(() => undefined);
+        }
       }
-      if (kind === "song") player.invalidateQueue();
+      if (kind === "song") {
+        player.invalidateQueue();
+      }
       await Promise.allSettled([
         queryCache.invalidateQueries({ key: libraryKeys.songs(userId) }),
         queryCache.invalidateQueries({ key: libraryKeys.details(userId) }),
@@ -125,7 +138,9 @@ export function useSongMembershipSave() {
       const failed: { id: string; message: string }[] = [];
       let error = "";
       for (const change of changes) {
-        if (session.generation !== generation) break;
+        if (session.generation !== generation) {
+          break;
+        }
         try {
           await request(`/api/playlists/${change.id}/songs/${songId}`, {
             method: change.included ? "PUT" : "DELETE",
@@ -144,7 +159,9 @@ export function useSongMembershipSave() {
     },
     onMutate: () => ({ userId: session.userId, generation: session.generation }),
     async onSuccess({ succeeded }, { songId }, { userId, generation }) {
-      if (!succeeded.length || session.generation !== generation) return;
+      if (!succeeded.length || session.generation !== generation) {
+        return;
+      }
       const scope = session.offlineScope;
       if (scope) {
         const { updateOfflineMembership } = await import("~/utils/offline-library");
@@ -157,8 +174,11 @@ export function useSongMembershipSave() {
       if (song) {
         const ids = new Set(song.playlistIds);
         for (const { id, included } of succeeded) {
-          if (included) ids.add(id);
-          else ids.delete(id);
+          if (included) {
+            ids.add(id);
+          } else {
+            ids.delete(id);
+          }
         }
         queryCache.setQueryData(key, { ...song, playlistIds: [...ids] });
       }

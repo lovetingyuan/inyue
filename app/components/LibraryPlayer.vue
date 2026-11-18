@@ -67,7 +67,9 @@ const {
 watch(
   volume,
   (value) => {
-    if (value > 0) lastAudibleVolume = value;
+    if (value > 0) {
+      lastAudibleVolume = value;
+    }
   },
   { immediate: true, flush: "sync" },
 );
@@ -75,7 +77,9 @@ watch(
 watch(
   () => track.value?.id,
   (trackId) => {
-    if (trackId) return;
+    if (trackId) {
+      return;
+    }
     hideModeNotice();
     queueDialog.value?.close();
     nowPlaying.value?.close();
@@ -93,16 +97,23 @@ function playQueuedTrack(trackId: string) {
 }
 
 async function cycleMode() {
-  if (changingMode.value) return;
+  if (changingMode.value) {
+    return;
+  }
   const previousMode = mode.value;
   let nextMode: PlaybackMode = "sequential";
-  if (previousMode === "sequential") nextMode = queue.value.length > 1 ? "loop" : "shuffle";
-  else if (previousMode === "loop") nextMode = "shuffle";
+  if (previousMode === "sequential") {
+    nextMode = queue.value.length > 1 ? "loop" : "shuffle";
+  } else if (previousMode === "loop") {
+    nextMode = "shuffle";
+  }
 
   changingMode.value = true;
   try {
     await player.setMode(nextMode);
-    if (mode.value === nextMode && track.value) revealModeNotice();
+    if (mode.value === nextMode && track.value) {
+      revealModeNotice();
+    }
   } finally {
     changingMode.value = false;
   }

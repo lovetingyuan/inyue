@@ -18,7 +18,9 @@ export async function serveMedia(
   contentType: string,
 ) {
   const object = await bucket.head(key);
-  if (!object) return sendNoContent(event, 404);
+  if (!object) {
+    return sendNoContent(event, 404);
+  }
   setResponseHeaders(event, {
     "content-type": contentType,
     "accept-ranges": "bytes",

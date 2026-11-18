@@ -61,11 +61,17 @@ export function useLibraryQueries() {
     watch(
       () => session.offlineScope,
       async (scope) => {
-        if (!scope || app.offline) return;
+        if (!scope || app.offline) {
+          return;
+        }
         const { saveOfflineSongs } = await import("~/utils/offline-library");
-        if (scope !== session.offlineScope || app.offline) return;
+        if (scope !== session.offlineScope || app.offline) {
+          return;
+        }
         const items = songs.data.value?.pages.flatMap(({ items }) => items);
-        if (items) await saveOfflineSongs(scope, items).catch(() => undefined);
+        if (items) {
+          await saveOfflineSongs(scope, items).catch(() => undefined);
+        }
       },
       { once: true },
     );
@@ -78,11 +84,15 @@ export function useLibraryQueries() {
       key: connectionKey(libraryKeys.song(session.userId, id ?? ""), offline),
       enabled: Boolean(id) && enabled(),
       query: async ({ signal }) => {
-        if (!id) return;
+        if (!id) {
+          return;
+        }
         if (offline && scope) {
           const { readOfflineSong } = await import("~/utils/offline-library");
           const song = await readOfflineSong(scope, id);
-          if (!song) throw new Error("歌曲详情尚未缓存。");
+          if (!song) {
+            throw new Error("歌曲详情尚未缓存。");
+          }
           return song;
         }
         try {
@@ -163,11 +173,17 @@ export function usePlaylistQuery() {
     watch(
       () => session.offlineScope,
       async (scope) => {
-        if (!scope || app.offline) return;
+        if (!scope || app.offline) {
+          return;
+        }
         const { saveOfflinePlaylists } = await import("~/utils/offline-library");
-        if (scope !== session.offlineScope || app.offline) return;
+        if (scope !== session.offlineScope || app.offline) {
+          return;
+        }
         const lists = playlists.data.value;
-        if (lists) await saveOfflinePlaylists(scope, lists).catch(() => undefined);
+        if (lists) {
+          await saveOfflinePlaylists(scope, lists).catch(() => undefined);
+        }
       },
       { once: true },
     );
@@ -232,7 +248,9 @@ function useCoverUrls(data: Readonly<Ref<Record<string, Blob | string> | undefin
     const local: string[] = [];
     urls.value = Object.fromEntries(
       Object.entries(data.value ?? {}).map(([id, cover]) => {
-        if (typeof cover === "string") return [id, cover];
+        if (typeof cover === "string") {
+          return [id, cover];
+        }
         const url = URL.createObjectURL(cover);
         local.push(url);
         return [id, url];
@@ -275,10 +293,15 @@ export function useCoverQuery(ids: () => readonly string[]) {
         for (const id of list) {
           signal.throwIfAborted();
           const cover = scope && (await media?.readOfflineMedia(scope, "cover", id));
-          if (cover) covers[id] = cover;
-          else missing.push(id);
+          if (cover) {
+            covers[id] = cover;
+          } else {
+            missing.push(id);
+          }
         }
-        if (offline) return covers;
+        if (offline) {
+          return covers;
+        }
         for (let index = 0; index < missing.length; index += 80) {
           const { _data } = await request<MediaAuthorization>("/api/media/authorize", {
             method: "POST",
@@ -290,7 +313,9 @@ export function useCoverQuery(ids: () => readonly string[]) {
             const addressed = Object.entries(_data?.covers ?? {});
             void (async () => {
               for (const [id, url] of addressed) {
-                if (signal.aborted) break;
+                if (signal.aborted) {
+                  break;
+                }
                 await media.cacheOfflineMedia(scope, "cover", id, url, signal, apiOrigin());
               }
             })();

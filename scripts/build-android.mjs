@@ -37,7 +37,9 @@ try {
   }
 
   const apk = statSync(apkPath);
-  if (!apk.isFile() || apk.size === 0) throw new Error("APK 文件为空。");
+  if (!apk.isFile() || apk.size === 0) {
+    throw new Error("APK 文件为空。");
+  }
 
   console.log(`APK：${apkPath}`);
   console.log(`大小：${(apk.size / 1024 / 1024).toFixed(2)} MB`);

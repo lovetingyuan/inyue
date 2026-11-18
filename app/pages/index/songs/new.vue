@@ -13,8 +13,11 @@ const editor = useTemplateRef("editor");
 useHead({ title: "新增歌曲 · inYue" });
 
 function leave() {
-  if (window.history.state?.back) router.back();
-  else void router.replace("/");
+  if (window.history.state?.back) {
+    router.back();
+  } else {
+    void router.replace("/");
+  }
 }
 
 onBeforeRouteLeave(() => !editor.value?.busy);

@@ -15,8 +15,9 @@ export default defineEventHandler(async (event) => {
   const term = typeof query.q === "string" ? query.q.trim().slice(0, 250).toLowerCase() : "";
   const filter = typeof query.playlist === "string" ? query.playlist : "";
   const offset = Number(query.offset ?? 0);
-  if (!Number.isSafeInteger(offset) || offset < 0)
+  if (!Number.isSafeInteger(offset) || offset < 0) {
     throw createError({ statusCode: 400, statusMessage: "INVALID_OFFSET" });
+  }
   const membership = db
     .select({ id: memberships.songId })
     .from(memberships)
@@ -84,7 +85,9 @@ export default defineEventHandler(async (event) => {
       .from(memberships)
       .where(and(eq(memberships.ownerId, user.id), inArray(memberships.songId, [...bySong.keys()])))
       .all();
-    for (const row of rows) bySong.get(row.songId)?.playlistIds.push(row.playlistId);
+    for (const row of rows) {
+      bySong.get(row.songId)?.playlistIds.push(row.playlistId);
+    }
   }
   return { items: [...bySong.values()], nextOffset, total };
 });

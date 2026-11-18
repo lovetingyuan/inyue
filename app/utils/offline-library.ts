@@ -53,14 +53,20 @@ export function readOfflineState() {
 export async function changeOfflineAccount(expected: string | undefined, profile?: OfflineAccount) {
   const change = await transaction("readwrite", async (store) => {
     const current = await getState(store);
-    if (current?.revision !== expected) return { state: current };
+    if (current?.revision !== expected) {
+      return { state: current };
+    }
     const sameAccount =
       current?.profile && profile && current.profile.account.id === profile.account.id;
-    if (!profile && !current?.profile) return { state: current };
+    if (!profile && !current?.profile) {
+      return { state: current };
+    }
     const state = { revision: sameAccount ? current.revision : crypto.randomUUID(), profile };
     store.put(state, stateKey);
     const removed = sameAccount ? undefined : current?.revision;
-    if (removed) store.delete(scopedKeys(`${removed}/`));
+    if (removed) {
+      store.delete(scopedKeys(`${removed}/`));
+    }
     return { state, removed, switched: !sameAccount };
   });
   if (change.switched && change.state) {
@@ -88,8 +94,9 @@ export function withOfflineStore<T>(
       state?.revision !== scope ||
       !state.profile ||
       (!Capacitor.isNativePlatform() && state.profile.expiresAt <= Date.now())
-    )
+    ) {
       return;
+    }
     return work(store);
   });
 }
@@ -111,7 +118,9 @@ interface StoredPlaylists {
 export function saveOfflineSongs(scope: string, songs: SongDetails[]) {
   const expires = Date.now() + offlineMaxAge;
   return withOfflineStore(scope, "readwrite", (store) => {
-    for (const song of songs) store.put({ song, expires }, songKey(scope, song.id));
+    for (const song of songs) {
+      store.put({ song, expires }, songKey(scope, song.id));
+    }
   });
 }
 
@@ -198,11 +207,16 @@ export function updateOfflineMembership(
   return withOfflineStore(scope, "readwrite", async (store) => {
     const key = songKey(scope, id);
     const entry = await idbResult<StoredSong | undefined>(store.get(key));
-    if (!entry) return;
+    if (!entry) {
+      return;
+    }
     const ids = new Set(entry.song.playlistIds);
     for (const change of changes) {
-      if (change.included) ids.add(change.id);
-      else ids.delete(change.id);
+      if (change.included) {
+        ids.add(change.id);
+      } else {
+        ids.delete(change.id);
+      }
     }
     entry.song.playlistIds = [...ids];
     store.put(entry, key);
@@ -216,10 +230,13 @@ export function removeOfflinePlaylist(scope: string, id: string) {
       idbResult<StoredSong[]>(store.getAll(scopedKeys(songKey(scope, "")))),
       idbResult<StoredPlaylists | undefined>(store.get(key)),
     ]);
-    if (playlists)
+    if (playlists) {
       store.put({ ...playlists, items: playlists.items.filter((item) => item.id !== id) }, key);
+    }
     for (const entry of songs) {
-      if (!entry.song.playlistIds.includes(id)) continue;
+      if (!entry.song.playlistIds.includes(id)) {
+        continue;
+      }
       entry.song.playlistIds = entry.song.playlistIds.filter((item) => item !== id);
       store.put(entry, songKey(scope, entry.song.id));
     }
@@ -233,8 +250,13 @@ export function pruneOfflineMetadata(scope: string) {
       idbResult<StoredPlaylists | undefined>(store.get(`${scope}/playlists`)),
     ]);
     const now = Date.now();
-    for (const { song, expires } of songs)
-      if (expires <= now) store.delete(songKey(scope, song.id));
-    if (playlists && playlists.expires <= now) store.delete(`${scope}/playlists`);
+    for (const { song, expires } of songs) {
+      if (expires <= now) {
+        store.delete(songKey(scope, song.id));
+      }
+    }
+    if (playlists && playlists.expires <= now) {
+      store.delete(`${scope}/playlists`);
+    }
   });
 }

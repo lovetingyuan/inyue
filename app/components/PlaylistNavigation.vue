@@ -18,7 +18,9 @@ const selected = computed(() =>
 const emit = defineEmits<{ edit: [Playlist?] }>();
 
 async function select(id: string) {
-  if (router.currentRoute.value.path !== "/" && (await router.push("/"))) return;
+  if (router.currentRoute.value.path !== "/" && (await router.push("/"))) {
+    return;
+  }
   library.selectPlaylist(id);
   app.drawerOpen = false;
 }

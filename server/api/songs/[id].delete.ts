@@ -13,7 +13,9 @@ export default defineEventHandler(async (event) => {
     .where(songOwner(user.id, id))
     .returning({ id: songs.id })
     .get();
-  if (!removed) throw createError({ statusCode: 404, statusMessage: "SONG_NOT_FOUND" });
+  if (!removed) {
+    throw createError({ statusCode: 404, statusMessage: "SONG_NOT_FOUND" });
+  }
   await cleanupUserFiles(event, user.id);
   return sendNoContent(event);
 });

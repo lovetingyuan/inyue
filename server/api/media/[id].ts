@@ -8,7 +8,9 @@ import { mediaBucket } from "../../utils/media-bucket";
 import { serveMedia } from "../../utils/serve-media";
 
 export default defineEventHandler(async (event) => {
-  if (!["GET", "HEAD"].includes(event.method)) throw createError({ statusCode: 405 });
+  if (!["GET", "HEAD"].includes(event.method)) {
+    throw createError({ statusCode: 405 });
+  }
   const id = getRouterParam(event, "id");
   const { sid, expires, sig } = getQuery(event);
   if (
@@ -22,12 +24,16 @@ export default defineEventHandler(async (event) => {
   }
   const db = libraryDatabase(event);
   const session = await getMediaSession(db, sid);
-  if (!session) return sendNoContent(event, 403);
+  if (!session) {
+    return sendNoContent(event, 403);
+  }
   const file = await db
     .select({ contentType: files.contentType })
     .from(files)
     .where(and(eq(files.id, id), eq(files.ownerId, session.userId), eq(files.state, "ready")))
     .get();
-  if (!file) return sendNoContent(event, 404);
+  if (!file) {
+    return sendNoContent(event, 404);
+  }
   return serveMedia(event, mediaBucket(event), id, file.contentType);
 });

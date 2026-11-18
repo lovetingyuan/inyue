@@ -5,7 +5,9 @@ import { serveMedia } from "../../../utils/serve-media";
 
 export default defineEventHandler(async (event) => {
   const { secret, db, bucket } = integrationMedia(event);
-  if (!["GET", "HEAD"].includes(event.method)) throw createError({ statusCode: 405 });
+  if (!["GET", "HEAD"].includes(event.method)) {
+    throw createError({ statusCode: 405 });
+  }
   const id = getRouterParam(event, "id");
   const { sid, expires, sig } = getQuery(event);
   if (

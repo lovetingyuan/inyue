@@ -10,12 +10,13 @@ export { fields as songFields };
 
 export function songMetadata(form: Awaited<ReturnType<typeof uploadForm>>) {
   const year = formText(form, "year", 4);
-  if (year && !/^[1-9]\d{3}$/.test(year))
+  if (year && !/^[1-9]\d{3}$/.test(year)) {
     throw createError({
       statusCode: 400,
       statusMessage: "INVALID_METADATA",
       data: { field: "year", reason: "year" },
     });
+  }
   return {
     title: formText(form, "title", 250, true) ?? "",
     artist: formText(form, "artist", 250, true) ?? "",
@@ -33,6 +34,8 @@ export function songOwner(userId: string, id: string) {
 
 export async function ownedSong(db: ReturnType<typeof libraryDatabase>, owner: string, id: string) {
   const song = await db.select(songFields).from(songs).where(songOwner(owner, id)).get();
-  if (!song) throw createError({ statusCode: 404, statusMessage: "SONG_NOT_FOUND" });
+  if (!song) {
+    throw createError({ statusCode: 404, statusMessage: "SONG_NOT_FOUND" });
+  }
   return song;
 }

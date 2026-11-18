@@ -28,6 +28,8 @@ export async function ownedPlaylist(
     .from(playlists)
     .where(playlistOwner(owner, id))
     .get();
-  if (!playlist) throw createError({ statusCode: 404, statusMessage: "PLAYLIST_NOT_FOUND" });
+  if (!playlist) {
+    throw createError({ statusCode: 404, statusMessage: "PLAYLIST_NOT_FOUND" });
+  }
   return playlist;
 }

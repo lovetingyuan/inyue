@@ -13,7 +13,9 @@ export function useAccountActions() {
     async mutation() {
       const input = action;
       action = undefined;
-      if (!input) return;
+      if (!input) {
+        return;
+      }
       switch (input.type) {
         case "login":
           return signIn({ email: input.email, password: input.password });
@@ -58,8 +60,9 @@ export function useAccountActions() {
               },
             });
             const { result } = await SocialLogin.login({ provider: "google", options: {} });
-            if (!("idToken" in result) || !result.idToken)
+            if (!("idToken" in result) || !result.idToken) {
               throw new Error("Google ID token is missing");
+            }
             await signIn({ provider: "google", idToken: { token: result.idToken } });
           } else {
             const result = await auth?.signIn.social({
@@ -67,7 +70,9 @@ export function useAccountActions() {
               callbackURL: input.callbackURL,
               errorCallbackURL: input.errorCallbackURL,
             });
-            if (!result?.data?.url) throw new Error("Google authorization URL is missing");
+            if (!result?.data?.url) {
+              throw new Error("Google authorization URL is missing");
+            }
           }
           break;
       }
@@ -78,7 +83,9 @@ export function useAccountActions() {
   });
 
   async function execute(input: AccountAction) {
-    if (mutation.isLoading.value) return;
+    if (mutation.isLoading.value) {
+      return;
+    }
     action = input;
     try {
       await mutation.mutateAsync();
