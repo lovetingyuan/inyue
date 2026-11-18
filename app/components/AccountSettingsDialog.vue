@@ -80,9 +80,7 @@ defineExpose({
     aria-labelledby="settings-title"
     @cancel="session.signingOut && $event.preventDefault()"
   >
-    <div
-      class="modal-box flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col overflow-hidden p-0"
-    >
+    <div class="modal-box flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col overflow-hidden p-0">
       <h2 id="settings-title" class="sr-only">设置</h2>
       <div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
         <div role="tablist" class="tabs tabs-sm tabs-box w-full" aria-label="设置分类">
@@ -186,13 +184,7 @@ defineExpose({
           class="pt-4"
         >
           <div class="flex items-center gap-3">
-            <img
-              src="/assets/icon/inyue.svg"
-              width="48"
-              height="48"
-              class="shrink-0"
-              alt=""
-            />
+            <img src="/assets/icon/inyue.svg" width="48" height="48" class="shrink-0" alt="" />
             <div>
               <h3 class="text-lg font-bold">inYue</h3>
               <p class="mt-0.5 text-sm text-base-content/70">
@@ -202,15 +194,11 @@ defineExpose({
           </div>
 
           <dl class="mt-4 overflow-hidden rounded-box border border-base-300 text-sm">
-            <div
-              class="grid gap-1 border-b border-base-300 p-3 sm:grid-cols-[6rem_minmax(0,1fr)]"
-            >
+            <div class="grid gap-1 border-b border-base-300 p-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
               <dt class="font-medium text-base-content/70">构建</dt>
               <dd class="break-words">{{ buildLabel }}</dd>
             </div>
-            <div
-              class="grid gap-1 border-b border-base-300 p-3 sm:grid-cols-[6rem_minmax(0,1fr)]"
-            >
+            <div class="grid gap-1 border-b border-base-300 p-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
               <dt class="font-medium text-base-content/70">GitHub</dt>
               <dd class="min-w-0">
                 <a

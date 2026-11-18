@@ -104,7 +104,9 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
             <img src="/assets/icon/inyue.svg" width="36" height="36" class="shrink-0" alt="" />
             <span class="text-xl font-bold tracking-tight">inYue</span>
           </NuxtLink>
-          <span class="text-xs text-base-content/65" role="status">{{ offline ? "离线" : "" }}</span>
+          <span class="text-xs text-base-content/65" role="status">{{
+            offline ? "离线" : ""
+          }}</span>
           <button
             ref="drawerClose"
             type="button"

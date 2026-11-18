@@ -33,7 +33,9 @@ export function useSongSave() {
       }
       return Promise.allSettled([
         queryCache.invalidateQueries({ key: libraryKeys.songs(userId) }),
-        ...(songId ? [queryCache.invalidateQueries({ key: libraryKeys.song(userId, songId) })] : []),
+        ...(songId
+          ? [queryCache.invalidateQueries({ key: libraryKeys.song(userId, songId) })]
+          : []),
         queryCache.invalidateQueries({ key: accountQueryKey }),
       ]);
     },
@@ -86,7 +88,8 @@ export function useLibraryDelete() {
       else if (library.playlist === id) library.selectPlaylist("default");
       const scope = session.offlineScope;
       if (scope) {
-        const { removeOfflineSong, removeOfflinePlaylist } = await import("~/utils/offline-library");
+        const { removeOfflineSong, removeOfflinePlaylist } =
+          await import("~/utils/offline-library");
         if (kind === "song") {
           await removeOfflineSong(scope, id).catch(() => undefined);
           const { removeOfflineAudio } = await import("~/utils/offline-media");

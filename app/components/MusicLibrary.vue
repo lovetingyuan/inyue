@@ -4,7 +4,12 @@ import { libraryError } from "~/utils/library-error";
 import { usePlayerStore } from "~/stores/player";
 import { useLibraryStore } from "~/stores/library";
 import { useAppStore } from "~/stores/app";
-import { useCoverQuery, useLibraryQueries, useOfflineAudio, usePlaylistState } from "~/composables/useLibraryQueries";
+import {
+  useCoverQuery,
+  useLibraryQueries,
+  useOfflineAudio,
+  usePlaylistState,
+} from "~/composables/useLibraryQueries";
 import PlayingBars from "~/components/PlayingBars.vue";
 import MusicArtwork from "~/components/MusicArtwork.vue";
 import LibraryPlayer from "~/components/LibraryPlayer.vue";
@@ -26,7 +31,9 @@ const { songs: songQuery, play: playFromLibrary } = useLibraryQueries();
 const { playlists, error: playlistError, retry: retryPlaylists } = usePlaylistState();
 const songs = computed(() => songQuery.data.value?.pages.flatMap(({ items }) => items) ?? []);
 const offlineAudio = useOfflineAudio();
-const firstPlayable = computed(() => songs.value.find((song) => !app.offline || offlineAudio.value?.has(song.id)));
+const firstPlayable = computed(() =>
+  songs.value.find((song) => !app.offline || offlineAudio.value?.has(song.id)),
+);
 const searchTotal = computed(() => songQuery.data.value?.pages[0]?.total);
 const { hasNextPage, loadNextPage, isLoading: loading } = songQuery;
 const playlistCovers = useCoverQuery(() =>
@@ -100,7 +107,9 @@ function playFirst() {
           </div>
         </form>
       </div>
-      <div class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 pb-5 sm:px-6">
+      <div
+        class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 pb-5 sm:px-6"
+      >
         <div
           class="flex shrink-0 items-center gap-3 rounded-box bg-linear-to-br from-primary/17 to-base-200/55 px-2 py-1.5 sm:gap-4 sm:px-3 sm:py-2"
         >
@@ -198,16 +207,22 @@ function playFirst() {
                 :disabled="app.offline && !offlineAudio?.has(song.id)"
                 :aria-description="
                   current?.id === song.id
-                    ? (playbackLoading ? '正在加载' : playing ? '正在播放' : undefined)
+                    ? playbackLoading
+                      ? '正在加载'
+                      : playing
+                        ? '正在播放'
+                        : undefined
                     : undefined
                 "
                 @click="play(song)"
               >
                 <span
                   class="pointer-events-none absolute left-2 z-10 grid size-10 shrink-0 place-items-center rounded-[18%] text-center text-xs tabular-nums sm:relative sm:left-auto sm:size-auto sm:w-6"
-                  :class="current?.id === song.id && (playbackLoading || playing)
-                    ? 'max-sm:bg-neutral/70'
-                    : 'max-sm:opacity-0 max-sm:group-hover:bg-neutral/70 max-sm:group-hover:opacity-100'"
+                  :class="
+                    current?.id === song.id && (playbackLoading || playing)
+                      ? 'max-sm:bg-neutral/70'
+                      : 'max-sm:opacity-0 max-sm:group-hover:bg-neutral/70 max-sm:group-hover:opacity-100'
+                  "
                   aria-hidden="true"
                 >
                   <LoaderCircle
@@ -219,7 +234,9 @@ function playFirst() {
                     class="size-4 text-neutral-content sm:text-primary"
                   />
                   <template v-else
-                    ><span class="hidden text-base-content/55 group-hover:opacity-0 sm:block">{{ index + 1 }}</span
+                    ><span class="hidden text-base-content/55 group-hover:opacity-0 sm:block">{{
+                      index + 1
+                    }}</span
                     ><Play
                       class="absolute size-4 shrink-0 text-neutral-content sm:text-base-content sm:opacity-0 sm:group-hover:opacity-100"
                       :stroke-width="1.8"
@@ -241,7 +258,11 @@ function playFirst() {
                     >{{ song.artist
                     }}<span v-if="song.album" class="lg:hidden"> · {{ song.album }}</span></span
                   >
-                  <span v-if="app.offline && !offlineAudio?.has(song.id)" class="text-xs text-base-content/65">音频未缓存</span>
+                  <span
+                    v-if="app.offline && !offlineAudio?.has(song.id)"
+                    class="text-xs text-base-content/65"
+                    >音频未缓存</span
+                  >
                 </span>
                 <span class="hidden w-[26%] truncate text-xs text-base-content/65 lg:block">{{
                   song.album || "—"
@@ -249,9 +270,7 @@ function playFirst() {
                 <span
                   class="hidden min-w-8 shrink-0 justify-items-end text-xs text-base-content/65 tabular-nums sm:grid"
                 >
-                  <span v-if="song.duration != null">{{
-                    formatMusicTime(song.duration)
-                  }}</span>
+                  <span v-if="song.duration != null">{{ formatMusicTime(song.duration) }}</span>
                 </span>
               </button>
               <button

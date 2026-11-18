@@ -64,7 +64,13 @@ export function useAppSession() {
   }
 
   useIntervalFn(() => {
-    if (!app.native || !session.mounted || visible.value !== "visible" || !(nativeOnline ?? online.value)) return;
+    if (
+      !app.native ||
+      !session.mounted ||
+      visible.value !== "visible" ||
+      !(nativeOnline ?? online.value)
+    )
+      return;
     // A VPN can report a validated connection after its underlying network goes away.
     void probeNativeApi();
   }, 15_000);
@@ -98,14 +104,11 @@ export function useAppSession() {
     },
     { flush: "sync" },
   );
-  watch(
-    [() => session.userId, () => session.refreshing],
-    ([id, refreshing]) => {
-      if (integrationPlayback) return;
-      if (!id) void player.setOwner("");
-      else if (!refreshing) void player.setOwner(id);
-    },
-  );
+  watch([() => session.userId, () => session.refreshing], ([id, refreshing]) => {
+    if (integrationPlayback) return;
+    if (!id) void player.setOwner("");
+    else if (!refreshing) void player.setOwner(id);
+  });
 
   onMounted(async () => {
     if (!app.native) {
@@ -116,7 +119,8 @@ export function useAppSession() {
     }
     try {
       const [{ Network }, { App }] = await Promise.all([
-        import("@capacitor/network"), import("@capacitor/app"),
+        import("@capacitor/network"),
+        import("@capacitor/app"),
       ]);
       let statusRevision = 0;
       async function refreshStatus() {
@@ -149,13 +153,17 @@ export function useAppSession() {
       }
     }
   });
-  watch(() => session.offlineScope, async (scope) => {
-    if (!scope) return;
-    const [{ pruneOfflineMetadata }, { pruneOfflineMedia }] = await Promise.all([
-      import("~/utils/offline-library"), import("~/utils/offline-media"),
-    ]);
-    void Promise.allSettled([pruneOfflineMetadata(scope), pruneOfflineMedia(scope)]);
-  });
+  watch(
+    () => session.offlineScope,
+    async (scope) => {
+      if (!scope) return;
+      const [{ pruneOfflineMetadata }, { pruneOfflineMedia }] = await Promise.all([
+        import("~/utils/offline-library"),
+        import("~/utils/offline-media"),
+      ]);
+      void Promise.allSettled([pruneOfflineMetadata(scope), pruneOfflineMedia(scope)]);
+    },
+  );
   onBeforeUnmount(() => {
     disposed = true;
     for (const listener of networkListeners) void listener.remove();

@@ -120,7 +120,7 @@ async function readMedia(scope: string, directory: FileSystemDirectoryHandle, na
 export function readOfflineMedia(scope: string, kind: Kind, id: string) {
   return (async () => {
     if (Capacitor.isNativePlatform()) {
-      if (!await withOfflineStore(scope, "readonly", () => true)) return;
+      if (!(await withOfflineStore(scope, "readonly", () => true))) return;
       const { uri } = await nativeMedia.read({ scope, kind, id });
       if (await withOfflineStore(scope, "readonly", () => true)) return uri;
       return;
@@ -143,7 +143,8 @@ export async function readNativeAudioSources(scope: string) {
 }
 
 export async function readOfflineAudioIds(scope: string) {
-  if (Capacitor.isNativePlatform()) return new Set(Object.keys(await readNativeAudioSources(scope)));
+  if (Capacitor.isNativePlatform())
+    return new Set(Object.keys(await readNativeAudioSources(scope)));
   try {
     const directory = await (await mediaRoot()).getDirectoryHandle(scope);
     const entries = await mediaEntries(scope);
@@ -173,8 +174,13 @@ export function cacheOfflineMedia(
     return (async () => {
       const origin = apiOrigin || location.origin;
       const source = new URL(url);
-      if (source.origin !== origin || signal?.aborted ||
-          !await withOfflineStore(scope, "readonly", () => true) || signal?.aborted) return;
+      if (
+        source.origin !== origin ||
+        signal?.aborted ||
+        !(await withOfflineStore(scope, "readonly", () => true)) ||
+        signal?.aborted
+      )
+        return;
       await nativeMedia.download({ scope, kind, id, origin, url });
     })().catch(() => undefined);
   }

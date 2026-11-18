@@ -25,15 +25,7 @@ import type { PlaybackMode } from "~~/shared/types/library";
 defineOptions({ name: "LibraryPlayer" });
 
 const player = usePlayerStore();
-const {
-  current: track,
-  queue,
-  volume,
-  playing,
-  loading,
-  mode,
-  error,
-} = storeToRefs(player);
+const { current: track, queue, volume, playing, loading, mode, error } = storeToRefs(player);
 const showLoadingRing = ref(false);
 const { start: scheduleLoadingRing, stop: cancelLoadingRing } = useTimeoutFn(
   () => {

@@ -15,12 +15,16 @@ const covers = useCoverQuery(() => (song.value.coverId ? [song.value.coverId] : 
 const coverUrl = computed(() => {
   const id = song.value.coverId;
   if (!id) return undefined;
-  return covers.urls.value[id] ?? (id === props.initialSong.coverId ? props.initialCoverUrl : undefined);
+  return (
+    covers.urls.value[id] ?? (id === props.initialSong.coverId ? props.initialCoverUrl : undefined)
+  );
 });
 const loading = computed(
   () => !details.value && (!queryError.value || asyncStatus.value === "loading"),
 );
-const error = computed(() => (queryError.value ? app.offline ? "歌曲详情尚未缓存。" : libraryError(queryError.value) : ""));
+const error = computed(() =>
+  queryError.value ? (app.offline ? "歌曲详情尚未缓存。" : libraryError(queryError.value)) : "",
+);
 const albumAndYear = computed(() => {
   const { album, year } = song.value;
   return [album, year ? `${year}年` : ""].filter(Boolean).join(" · ");
@@ -90,7 +94,13 @@ const playlistButton = useTemplateRef("playlistButton");
     >
       <span class="loading loading-spinner loading-xs" aria-hidden="true" /> 加载中…
     </p>
-    <p v-else-if="!details && error" class="shrink-0 px-4 py-4 text-sm text-error sm:px-6" role="alert">{{ error }}</p>
+    <p
+      v-else-if="!details && error"
+      class="shrink-0 px-4 py-4 text-sm text-error sm:px-6"
+      role="alert"
+    >
+      {{ error }}
+    </p>
     <footer
       v-if="details && !app.offline"
       class="flex shrink-0 flex-wrap items-center gap-1 border-t border-base-300/70 px-4 pt-3 pb-[calc(0.75rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] sm:gap-2 sm:px-6"

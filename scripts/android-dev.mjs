@@ -64,17 +64,7 @@ async function develop(target) {
       const nuxt = join(dirname(require.resolve("nuxt/package.json")), "bin/nuxt.mjs");
       server = spawn(
         process.execPath,
-        [
-          nuxt,
-          "dev",
-          "--host",
-          host,
-          "--port",
-          port,
-          "--strictPort",
-          "--no-takeover",
-          "--no-fork",
-        ],
+        [nuxt, "dev", "--host", host, "--port", port, "--strictPort", "--no-takeover", "--no-fork"],
         { stdio: "inherit" },
       );
       exited = new Promise((resolve) => {

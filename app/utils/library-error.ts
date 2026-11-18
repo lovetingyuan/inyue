@@ -13,8 +13,12 @@ const messages: Record<string, string> = {
 };
 
 export function responseStatus(error: unknown) {
-  return typeof error === "object" && error !== null && "statusCode" in error &&
-    typeof error.statusCode === "number" ? error.statusCode : undefined;
+  return typeof error === "object" &&
+    error !== null &&
+    "statusCode" in error &&
+    typeof error.statusCode === "number"
+    ? error.statusCode
+    : undefined;
 }
 
 function libraryErrorBody(error: unknown) {

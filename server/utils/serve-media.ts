@@ -1,4 +1,12 @@
-import { getRequestHeader, removeResponseHeader, sendNoContent, sendStream, setResponseHeader, setResponseHeaders, setResponseStatus } from "h3";
+import {
+  getRequestHeader,
+  removeResponseHeader,
+  sendNoContent,
+  sendStream,
+  setResponseHeader,
+  setResponseHeaders,
+  setResponseStatus,
+} from "h3";
 import type { H3Event } from "h3";
 import { mediaRange } from "./media-range";
 import type { MediaBucket } from "../types/integration-media";

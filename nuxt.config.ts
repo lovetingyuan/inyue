@@ -152,8 +152,11 @@ export default defineNuxtConfig({
       nuxt.hook("pwa:beforeBuildServiceWorker", ({ generateSW }) => {
         generateSW?.runtimeCaching?.unshift({
           urlPattern: ({ request, sameOrigin, url }) =>
-            sameOrigin && request.mode === "navigate" &&
-            /^(?:\/|\/(?:login|register|forgot-password|reset-password|songs\/new)\/?)$/.test(url.pathname),
+            sameOrigin &&
+            request.mode === "navigate" &&
+            /^(?:\/|\/(?:login|register|forgot-password|reset-password|songs\/new)\/?)$/.test(
+              url.pathname,
+            ),
           handler: "NetworkOnly",
           // The Nuxt PWA module maps 200.html to its Cloudflare asset URL /200.
           options: { precacheFallback: { fallbackURL: "/200" } },
@@ -228,17 +231,21 @@ export default defineNuxtConfig({
         generateSW: {
           skipWaiting: false,
           globPatterns: ["build-info.js"],
-          manifestTransforms: [(entries) => ({
-            // Capacitor intercepts /favicon.ico and serves navigation from the APK.
-            manifest: entries.filter(({ url }) => !/(?:^|\/)favicon\.ico$|\.html$/.test(url)),
-            warnings: [],
-          })],
+          manifestTransforms: [
+            (entries) => ({
+              // Capacitor intercepts /favicon.ico and serves navigation from the APK.
+              manifest: entries.filter(({ url }) => !/(?:^|\/)favicon\.ico$|\.html$/.test(url)),
+              warnings: [],
+            }),
+          ],
           ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^(?:time|hash)$/],
           runtimeCaching: [
             {
               urlPattern: ({ url, request }) =>
-                url.pathname === "/api/auth-providers" && !url.search &&
-                request.cache !== "no-store" && request.credentials === "omit" &&
+                url.pathname === "/api/auth-providers" &&
+                !url.search &&
+                request.cache !== "no-store" &&
+                request.credentials === "omit" &&
                 !request.headers.has("authorization"),
               handler: "NetworkFirst",
               options: {
@@ -250,7 +257,8 @@ export default defineNuxtConfig({
             },
             {
               urlPattern: ({ request, sameOrigin, url }) =>
-                sameOrigin && !request.headers.has("authorization") &&
+                sameOrigin &&
+                !request.headers.has("authorization") &&
                 /^(image|script|style|font|worker)$/.test(request.destination) &&
                 /^\/(?:assets|_nuxt)\//.test(url.pathname),
               handler: "CacheFirst",

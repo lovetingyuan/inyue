@@ -53,8 +53,7 @@ export default defineEventHandler((event) => {
       "access-control-allow-origin": origin,
       "access-control-allow-methods": "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS",
       "access-control-allow-headers": "Authorization, Content-Type, Range",
-      "access-control-expose-headers":
-        `Set-Auth-Token, Content-Range, Accept-Ranges, ${offlineExpiryHeader}, ${offlineOwnerHeader}`,
+      "access-control-expose-headers": `Set-Auth-Token, Content-Range, Accept-Ranges, ${offlineExpiryHeader}, ${offlineOwnerHeader}`,
     });
     if (event.method === "OPTIONS") return sendNoContent(event);
   }

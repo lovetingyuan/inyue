@@ -150,7 +150,9 @@ await check(await call(media, { method: "HEAD" }), 403);
 
 const resetLog = await readFile(workerLog, "utf8");
 await check(
-  await call("/api/auth/request-password-reset", { body: { email, redirectTo: "/reset-password" } }),
+  await call("/api/auth/request-password-reset", {
+    body: { email, redirectTo: "/reset-password" },
+  }),
   200,
 );
 const reset = await check(await call(await mailLink("重置密码", resetLog.length)), 302);

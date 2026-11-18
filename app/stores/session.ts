@@ -68,7 +68,10 @@ export const useSessionStore = defineStore("session", () => {
           await storage?.changeOfflineAccount(state?.revision).catch(() => undefined);
           return null;
         }
-        if (storage && (status === undefined || status === 502 || status === 503 || status === 504)) {
+        if (
+          storage &&
+          (status === undefined || status === 502 || status === 503 || status === 504)
+        ) {
           offlineState.value = state?.revision === revokedScope ? undefined : state;
           offlineReady.value = true;
           app.offline = true;
@@ -87,8 +90,8 @@ export const useSessionStore = defineStore("session", () => {
   const accountError = computed(() =>
     accountQuery.error.value && !account.value ? "暂时无法连接音乐库。" : "",
   );
-  const ready = computed(
-    () => (app.offline ? mounted.value && offlineReady.value : !accountQuery.isPending.value),
+  const ready = computed(() =>
+    app.offline ? mounted.value && offlineReady.value : !accountQuery.isPending.value,
   );
   const userId = computed(() => account.value?.id ?? "");
   const offlineScope = computed(() => {
@@ -147,14 +150,17 @@ export const useSessionStore = defineStore("session", () => {
     } else if (app.offline && !signingOut.value) {
       if (reconnect) return reconnect;
       const revision = ++connectionRevision;
-      const attempt = accountQuery.refetch().then(async (result) => {
-        if (revision !== connectionRevision || result.status !== "success") return;
-        if (result.data)
-          await cache.invalidateQueries({ key: libraryKeys.user(result.data.id) }, false);
-        if (revision === connectionRevision) app.offline = false;
-      }).finally(() => {
-        if (reconnect === attempt) reconnect = undefined;
-      });
+      const attempt = accountQuery
+        .refetch()
+        .then(async (result) => {
+          if (revision !== connectionRevision || result.status !== "success") return;
+          if (result.data)
+            await cache.invalidateQueries({ key: libraryKeys.user(result.data.id) }, false);
+          if (revision === connectionRevision) app.offline = false;
+        })
+        .finally(() => {
+          if (reconnect === attempt) reconnect = undefined;
+        });
       reconnect = attempt;
       return attempt;
     }

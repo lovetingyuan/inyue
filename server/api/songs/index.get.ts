@@ -75,7 +75,9 @@ export default defineEventHandler(async (event) => {
         : await db.$count(songs, where)
       : undefined;
   const items = page.slice(0, 50);
-  const bySong = new Map<string, SongDetails>(items.map((song) => [song.id, { ...song, playlistIds: [] }]));
+  const bySong = new Map<string, SongDetails>(
+    items.map((song) => [song.id, { ...song, playlistIds: [] }]),
+  );
   if (items.length) {
     const rows = await db
       .select({ songId: memberships.songId, playlistId: memberships.playlistId })

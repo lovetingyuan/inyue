@@ -37,7 +37,8 @@ export function useMusicApi() {
       (method === "GET" && /^\/api\/(songs|playlists)(\/|$)/.test(path)) ||
       (method === "POST" && path === "/api/songs") ||
       (method === "PATCH" && path.startsWith("/api/songs/"));
-    const session = import.meta.client && (library || authorize) ? useSessionStore(pinia) : undefined;
+    const session =
+      import.meta.client && (library || authorize) ? useSessionStore(pinia) : undefined;
     const userId = session?.userId;
     const generation = session?.generation;
     const write = method !== "GET" && method !== "HEAD";
@@ -78,9 +79,15 @@ export function useMusicApi() {
       if (import.meta.server) throw createError({ statusCode: status ?? 503 });
       if (userId && generation !== undefined && (status === 401 || status === 403))
         session?.rejectSession(userId, generation);
-      if (native && session && !options?.signal?.aborted &&
-          (status === 502 || status === 503 || status === 504 ||
-            (status === undefined && error instanceof Error && error.name === "FetchError")))
+      if (
+        native &&
+        session &&
+        !options?.signal?.aborted &&
+        (status === 502 ||
+          status === 503 ||
+          status === 504 ||
+          (status === undefined && error instanceof Error && error.name === "FetchError"))
+      )
         void session.setConnection(false);
       throw error;
     }

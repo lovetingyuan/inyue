@@ -22,8 +22,8 @@ const playlistCoverPreview = useObjectUrl(() =>
   panel.value === "playlist" ? playlistCover.value : undefined,
 );
 const removeCover = ref(false);
-const hasPlaylistCover = computed(
-  () => Boolean(playlistCover.value || (playlistEdit.value?.coverId && !removeCover.value)),
+const hasPlaylistCover = computed(() =>
+  Boolean(playlistCover.value || (playlistEdit.value?.coverId && !removeCover.value)),
 );
 const playlistSave = usePlaylistSave();
 const libraryDelete = useLibraryDelete();
@@ -165,9 +165,7 @@ defineExpose({ open });
             accept="image/jpeg,image/png,image/webp"
             :disabled="pending"
             :aria-invalid="!!playlistErrors.cover"
-            :aria-describedby="
-              playlistErrors.cover ? `${playlistFieldId}-cover-error` : undefined
-            "
+            :aria-describedby="playlistErrors.cover ? `${playlistFieldId}-cover-error` : undefined"
             @change="selectPlaylistCover"
           />
           <p
@@ -206,7 +204,9 @@ defineExpose({ open });
         <p>歌单中的歌曲会保留。</p>
         <p v-if="dialogError" class="text-sm text-error" role="alert">{{ dialogError }}</p>
         <div class="flex justify-end gap-2">
-          <button type="button" class="btn" :disabled="pending" @click="dialog?.close()">取消</button>
+          <button type="button" class="btn" :disabled="pending" @click="dialog?.close()">
+            取消
+          </button>
           <button
             type="button"
             class="btn btn-error"

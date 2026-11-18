@@ -18,11 +18,7 @@ defineExpose({
 </script>
 
 <template>
-  <dialog
-    ref="dialog"
-    class="modal modal-bottom sm:modal-middle"
-    :aria-labelledby="titleId"
-  >
+  <dialog ref="dialog" class="modal modal-bottom sm:modal-middle" :aria-labelledby="titleId">
     <div class="modal-box max-w-sm">
       <h2 :id="titleId" class="text-lg font-semibold">确定退出登录？</h2>
       <div class="modal-action">

@@ -14,9 +14,8 @@ const tracks = useQuery({
   enabled: false,
   retry: 0,
   query: async ({ signal }) =>
-    (
-      await request<{ id: string; url: string }[]>("/api/integration/tracks", { retry: 1, signal })
-    )._data,
+    (await request<{ id: string; url: string }[]>("/api/integration/tracks", { retry: 1, signal }))
+      ._data,
 });
 const mode = ref<"sequential" | "loop" | "shuffle">("sequential");
 const track = ref("");

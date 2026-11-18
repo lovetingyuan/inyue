@@ -27,8 +27,12 @@ const session = useSessionStore();
             <img src="/assets/icon/inyue.svg" width="44" height="44" class="shrink-0" alt="" />
             <h1 class="text-3xl font-bold tracking-tight">inYue</h1>
           </header>
-          <p v-if="app.offline" role="status">{{ session.account ? "当前离线。" : "当前离线，请联网登录。" }}</p>
-          <NuxtLink v-if="app.offline && session.account" to="/" class="btn btn-primary">打开离线曲库</NuxtLink>
+          <p v-if="app.offline" role="status">
+            {{ session.account ? "当前离线。" : "当前离线，请联网登录。" }}
+          </p>
+          <NuxtLink v-if="app.offline && session.account" to="/" class="btn btn-primary"
+            >打开离线曲库</NuxtLink
+          >
           <div v-show="!app.offline" class="grid gap-4">
             <slot />
             <p v-if="session.accountError" class="alert alert-error" role="alert">

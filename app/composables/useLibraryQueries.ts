@@ -58,13 +58,17 @@ export function useLibraryQueries() {
   });
   if (import.meta.client && useNuxtApp().isHydrating && useNuxtApp().payload.serverRendered) {
     // The SSR queries finish before the browser verifies its offline cache scope.
-    watch(() => session.offlineScope, async (scope) => {
-      if (!scope || app.offline) return;
-      const { saveOfflineSongs } = await import("~/utils/offline-library");
-      if (scope !== session.offlineScope || app.offline) return;
-      const items = songs.data.value?.pages.flatMap(({ items }) => items);
-      if (items) await saveOfflineSongs(scope, items).catch(() => undefined);
-    }, { once: true });
+    watch(
+      () => session.offlineScope,
+      async (scope) => {
+        if (!scope || app.offline) return;
+        const { saveOfflineSongs } = await import("~/utils/offline-library");
+        if (scope !== session.offlineScope || app.offline) return;
+        const items = songs.data.value?.pages.flatMap(({ items }) => items);
+        if (items) await saveOfflineSongs(scope, items).catch(() => undefined);
+      },
+      { once: true },
+    );
   }
   useQuery(() => {
     const id = library.songId;
@@ -156,13 +160,17 @@ export function usePlaylistQuery() {
     };
   });
   if (import.meta.client && useNuxtApp().isHydrating && useNuxtApp().payload.serverRendered) {
-    watch(() => session.offlineScope, async (scope) => {
-      if (!scope || app.offline) return;
-      const { saveOfflinePlaylists } = await import("~/utils/offline-library");
-      if (scope !== session.offlineScope || app.offline) return;
-      const lists = playlists.data.value;
-      if (lists) await saveOfflinePlaylists(scope, lists).catch(() => undefined);
-    }, { once: true });
+    watch(
+      () => session.offlineScope,
+      async (scope) => {
+        if (!scope || app.offline) return;
+        const { saveOfflinePlaylists } = await import("~/utils/offline-library");
+        if (scope !== session.offlineScope || app.offline) return;
+        const lists = playlists.data.value;
+        if (lists) await saveOfflinePlaylists(scope, lists).catch(() => undefined);
+      },
+      { once: true },
+    );
   }
 }
 
@@ -254,7 +262,9 @@ export function useCoverQuery(ids: () => readonly string[]) {
     const offline = app.offline;
     return {
       key: connectionKey(coverKey(session.userId, list), offline),
-      enabled: import.meta.client && Boolean(session.userId && list.length) &&
+      enabled:
+        import.meta.client &&
+        Boolean(session.userId && list.length) &&
         (offline ? Boolean(scope) : !session.refreshing),
       retry: 0,
       staleTime: 60 * 60 * 1000,
