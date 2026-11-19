@@ -4,7 +4,8 @@ import { useAppStore } from "~/stores/app";
 import { useSongSave } from "~/composables/useLibraryMutations";
 import MusicArtwork from "~/components/MusicArtwork.vue";
 import { computed, reactive, ref, shallowRef, useId, useTemplateRef } from "vue";
-import { Image, Music, Plus, X } from "@lucide/vue";
+import { ClipboardPaste, Image, Music, Plus, X } from "@lucide/vue";
+import { Capacitor } from "@capacitor/core";
 import { useObjectUrl } from "@vueuse/core";
 import type { Song } from "~~/shared/types/library";
 import { audioMaxBytes, coverMaxBytes } from "~~/shared/library-limits";
@@ -32,12 +33,16 @@ const hasCover = computed(() =>
 );
 const oversizedCover = ref(false);
 const reading = ref(false);
+const pasting = ref(false);
 const busy = saveSong.isLoading;
+const mediaBusy = computed(() => busy.value || reading.value || pasting.value);
 const app = useAppStore();
 const error = ref("");
 const fieldId = useId();
 const fieldErrors = reactive<Partial<Record<keyof typeof form | "audio" | "cover", string>>>({});
 const audioNotice = ref("");
+const pasteNotice = ref("");
+const coverTypes = ["image/jpeg", "image/png", "image/webp"];
 const coverError = computed(() =>
   oversizedCover.value ? "封面超过 1 MiB，请移除或重新选择。" : fieldErrors.cover,
 );
@@ -51,12 +56,16 @@ const fields = [
 ] as const;
 
 async function selectAudio(event: Event) {
+  if (mediaBusy.value) {
+    return;
+  }
   const file = event.target instanceof HTMLInputElement ? event.target.files?.[0] : undefined;
   audio.value = undefined;
   cover.value = undefined;
   oversizedCover.value = false;
   fieldErrors.audio = "";
   fieldErrors.cover = "";
+  pasteNotice.value = "";
   audioNotice.value = "";
   error.value = "";
   if (!file) {
@@ -118,17 +127,73 @@ function selectCoverFile(event: Event) {
   if (!(event.target instanceof HTMLInputElement)) {
     return;
   }
-  cover.value = event.target.files?.[0];
+  const file = event.target.files?.[0];
   event.target.value = "";
-  oversizedCover.value = (cover.value?.size ?? 0) > coverMaxBytes;
+  if (!mediaBusy.value) {
+    setCover(file);
+  }
+}
+
+function setCover(file: File | undefined) {
+  cover.value = file;
+  oversizedCover.value = (file?.size ?? 0) > coverMaxBytes;
   fieldErrors.cover = "";
+  pasteNotice.value = "";
   removeCover.value = false;
 }
 
+async function pasteCover() {
+  if (mediaBusy.value) {
+    return;
+  }
+  pasting.value = true;
+  pasteNotice.value = "";
+  try {
+    let image: Blob | undefined;
+    if (Capacitor.isNativePlatform()) {
+      const { Clipboard, ClipboardContentType } = await import("@capawesome/capacitor-clipboard");
+      const { type, value } = await Clipboard.read();
+      if (type === ClipboardContentType.Image && value.startsWith("data:image/")) {
+        image = await (await fetch(value)).blob();
+      }
+    } else {
+      if (!navigator.clipboard?.read) {
+        pasteNotice.value = "当前浏览器无法读取剪贴板图片。";
+        return;
+      }
+      for (const item of await navigator.clipboard.read()) {
+        const type = item.types.find((type) => coverTypes.includes(type));
+        if (type) {
+          image = await item.getType(type);
+          break;
+        }
+      }
+    }
+    if (!image?.size || !coverTypes.includes(image.type)) {
+      pasteNotice.value = "剪贴板中没有可用的封面图片。";
+      return;
+    }
+    if (image.size > coverMaxBytes) {
+      pasteNotice.value = "剪贴板图片超过 1 MiB。";
+      return;
+    }
+    const extension = image.type.slice("image/".length);
+    setCover(new File([image], `剪贴板封面.${extension}`, { type: image.type }));
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === "NotAllowedError") {
+      pasteNotice.value = "未获得读取剪贴板的权限。";
+    } else if (cause instanceof Error && "code" in cause && cause.code === "EMPTY_CLIPBOARD") {
+      pasteNotice.value = "剪贴板中没有可用的封面图片。";
+    } else {
+      pasteNotice.value = "无法读取剪贴板图片。";
+    }
+  } finally {
+    pasting.value = false;
+  }
+}
+
 function clearCover() {
-  cover.value = undefined;
-  oversizedCover.value = false;
-  fieldErrors.cover = "";
+  setCover(undefined);
   removeCover.value = true;
 }
 
@@ -136,7 +201,7 @@ async function save() {
   if (app.offline) {
     return;
   }
-  if (busy.value || reading.value) {
+  if (mediaBusy.value) {
     return;
   }
   error.value = "";
@@ -205,14 +270,14 @@ defineExpose({ busy });
           type="file"
           hidden
           accept=".mp3,audio/mpeg"
-          :disabled="busy || reading"
+          :disabled="mediaBusy"
           @change="selectAudio"
         />
         <button
           class="btn btn-ghost validator h-14 w-full justify-start gap-3 rounded-box bg-primary/5 px-3 text-left hover:bg-primary/10"
           :class="fieldErrors.audio ? 'border-error' : 'border-primary/25'"
           type="button"
-          :disabled="busy || reading"
+          :disabled="mediaBusy"
           :aria-invalid="!!fieldErrors.audio"
           :aria-describedby="
             fieldErrors.audio
@@ -270,8 +335,8 @@ defineExpose({ busy });
           ref="coverInput"
           type="file"
           hidden
-          accept="image/jpeg,image/png,image/webp"
-          :disabled="busy || reading"
+          :accept="coverTypes.join(',')"
+          :disabled="mediaBusy"
           @change="selectCoverFile"
         />
         <div
@@ -287,7 +352,7 @@ defineExpose({ busy });
           <button
             class="btn btn-ghost h-full min-w-0 flex-1 justify-start gap-3 rounded-box border-0 px-3 text-left hover:bg-transparent hover:shadow-none"
             type="button"
-            :disabled="busy || reading"
+            :disabled="mediaBusy"
             :aria-invalid="!!coverError"
             :aria-describedby="coverError ? `${fieldId}-cover-error` : undefined"
             @click="coverInput?.click()"
@@ -314,11 +379,22 @@ defineExpose({ busy });
             />
           </button>
           <button
+            class="btn btn-ghost btn-circle mr-1 size-11 shrink-0 hover:shadow-none"
+            type="button"
+            aria-label="粘贴封面"
+            title="粘贴封面"
+            :disabled="mediaBusy"
+            :aria-busy="pasting"
+            @click="pasteCover"
+          >
+            <ClipboardPaste class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+          </button>
+          <button
             v-if="hasCover || oversizedCover"
             class="btn btn-ghost btn-circle mr-1 size-11 shrink-0 hover:bg-transparent hover:text-error hover:shadow-none"
             type="button"
             aria-label="移除封面"
-            :disabled="busy || reading"
+            :disabled="mediaBusy"
             @click="clearCover"
           >
             <X class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
@@ -332,6 +408,9 @@ defineExpose({ busy });
           role="alert"
         >
           {{ coverError }}
+        </p>
+        <p v-if="pasteNotice" class="mt-1 text-xs text-error" role="status">
+          {{ pasteNotice }}
         </p>
       </div>
     </div>
@@ -394,7 +473,7 @@ defineExpose({ busy });
       <button class="btn btn-ghost" type="button" :disabled="busy" @click="emit('cancel')">
         取消
       </button>
-      <button class="btn btn-primary" :disabled="busy || reading || app.offline">
+      <button class="btn btn-primary" :disabled="mediaBusy || app.offline">
         {{ busy ? "保存中…" : "保存" }}
       </button>
     </div>
