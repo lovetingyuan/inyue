@@ -1,10 +1,11 @@
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { parseArgs } from "node:util";
 import { devOrigin, devPort } from "../shared/dev-server.mjs";
+import { isRunning, lockAndroidBuild } from "./android-build-lock.mjs";
 
 const require = createRequire(import.meta.url);
 const capacitor = require.resolve("@capacitor/cli/bin/capacitor");
@@ -12,6 +13,7 @@ const windows = process.platform === "win32";
 const host = new URL(devOrigin).hostname;
 const port = String(devPort);
 const args = process.argv.slice(2);
+const liveReloadApk = "temp/android-live-reload/outputs/apk/debug/app-debug.apk";
 
 try {
   if (args.includes("--list") || args.includes("--version") || args.includes("-V")) {
@@ -50,7 +52,7 @@ async function develop(target) {
     throw new Error(`检测到多个设备，请用 --target 指定设备：${devices.join("、")}`);
   }
 
-  let release = lockDeployment();
+  let release = lockAndroidBuild();
   const shutdown = new AbortController();
   const stop = () => shutdown.abort();
   process.once("SIGINT", stop);
@@ -99,37 +101,6 @@ async function develop(target) {
     if (server?.exitCode === null && server.signalCode === null) {
       server.kill();
     }
-  }
-}
-
-function lockDeployment() {
-  mkdirSync("temp", { recursive: true });
-  const lock = "temp/android-deploy.lock";
-  try {
-    writeFileSync(lock, String(process.pid), { flag: "wx" });
-  } catch (error) {
-    if (error.code !== "EEXIST") {
-      throw error;
-    }
-    const owner = Number(readFileSync(lock, "utf8"));
-    if (!owner || isRunning(owner)) {
-      throw new Error("已有 Android 部署正在运行，请等它完成。");
-    }
-    rmSync(lock, { force: true });
-    writeFileSync(lock, String(process.pid), { flag: "wx" });
-  }
-  return () => rmSync(lock, { force: true });
-}
-
-function isRunning(pid) {
-  if (!Number.isSafeInteger(pid) || pid < 1) {
-    return false;
-  }
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code === "EPERM";
   }
 }
 
@@ -197,12 +168,13 @@ async function installApp(adb, device, signal) {
     run(process.execPath, [capacitor, "sync", "android"], {
       env: { ...process.env, INYUE_ANDROID_DEV: "1" },
     });
+    const gradleArgs = ["assembleDebug", "-PinyueLiveReload"];
     if (windows) {
-      run(process.env.ComSpec ?? "cmd.exe", ["/d", "/c", "gradlew.bat", "assembleDebug"], {
+      run(process.env.ComSpec ?? "cmd.exe", ["/d", "/c", "gradlew.bat", ...gradleArgs], {
         cwd: "android",
       });
     } else {
-      run("./gradlew", ["assembleDebug"], { cwd: "android" });
+      run("./gradlew", gradleArgs, { cwd: "android" });
     }
   } finally {
     if (original) {
@@ -212,7 +184,7 @@ async function installApp(adb, device, signal) {
     }
   }
 
-  run(adb, ["-s", device, "install", "-r", "android/app/build/outputs/apk/debug/app-debug.apk"]);
+  run(adb, ["-s", device, "install", "-r", liveReloadApk]);
   const ready = await nuxtResponds(signal);
   signal.throwIfAborted();
   if (!ready) {

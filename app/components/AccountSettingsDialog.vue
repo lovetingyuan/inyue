@@ -2,10 +2,14 @@
 import { showMusicDialog } from "~/utils/music-dialog";
 import { useSessionStore } from "~/stores/session";
 import { useAppStore } from "~/stores/app";
+import AccountAvatar from "~/components/AccountAvatar.vue";
+import AccountProfileDialog from "~/components/AccountProfileDialog.vue";
 import LogoutConfirmDialog from "~/components/LogoutConfirmDialog.vue";
 import { computed, nextTick, onMounted, ref, shallowRef, useTemplateRef } from "vue";
-import { ExternalLink } from "@lucide/vue";
+import { usePreferredDark } from "@vueuse/core";
+import { Share2 } from "@lucide/vue";
 import { storeToRefs } from "pinia";
+import { appName, officialSiteUrl } from "~~/shared/app-brand";
 import type { Account } from "~~/shared/types/library";
 
 defineOptions({ name: "AccountSettingsDialog" });
@@ -16,15 +20,23 @@ type LogoutConfirmDialogExpose = { open: () => void };
 
 const tabs: readonly SettingsTab[] = ["account", "about"];
 const repositoryUrl = "https://github.com/lovetingyuan/inyue";
-const repositoryLabel = "github.com/lovetingyuan/inyue";
 
 const session = useSessionStore();
 const { theme, offline, native } = storeToRefs(useAppStore());
+const prefersDark = usePreferredDark();
+const githubIcon = computed(() =>
+  theme.value === "dark" || (theme.value === "system" && prefersDark.value)
+    ? "/assets/icon/github-white.svg"
+    : "/assets/icon/github-black.svg",
+);
 const profile = useTemplateRef<HTMLDialogElement>("profile");
+const profileEditor = useTemplateRef("profileEditor");
 const logoutConfirm = useTemplateRef<LogoutConfirmDialogExpose>("logoutConfirm");
 const accountTab = useTemplateRef<HTMLButtonElement>("accountTab");
 const aboutTab = useTemplateRef<HTMLButtonElement>("aboutTab");
 const activeTab = ref<SettingsTab>("account");
+const sharing = ref(false);
+const shareFeedback = ref<"copied" | "manual" | "failed">();
 const buildInfo = shallowRef<Window["__INYUE_BUILD_INFO__"]>();
 onMounted(() => {
   buildInfo.value = window.__INYUE_BUILD_INFO__;
@@ -76,9 +88,43 @@ function handleTabKeydown(event: KeyboardEvent, current: SettingsTab) {
   activateTab(next, true);
 }
 
+async function shareApp() {
+  if (sharing.value) {
+    return;
+  }
+
+  const data = { title: appName, text: appName, url: officialSiteUrl };
+  sharing.value = true;
+  shareFeedback.value = undefined;
+  try {
+    if (native.value) {
+      const { Share } = await import("@capacitor/share");
+      await Share.share({ ...data, dialogTitle: `分享 ${appName}` });
+    } else if (typeof navigator.share === "function" && navigator.canShare?.(data) !== false) {
+      await navigator.share(data);
+    } else {
+      shareFeedback.value = "manual";
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(`${appName} ${officialSiteUrl}`);
+        shareFeedback.value = "copied";
+      }
+    }
+  } catch (error) {
+    const canceled =
+      (error instanceof DOMException && error.name === "AbortError") ||
+      (native.value && error instanceof Error && error.message === "Share canceled");
+    if (!canceled && shareFeedback.value !== "manual") {
+      shareFeedback.value = "failed";
+    }
+  } finally {
+    sharing.value = false;
+  }
+}
+
 defineExpose({
   open: () => {
     activeTab.value = "account";
+    shareFeedback.value = undefined;
     showMusicDialog(profile.value);
   },
   close: () => profile.value?.close(),
@@ -137,22 +183,20 @@ defineExpose({
           class="grid gap-4 pt-4"
         >
           <div class="flex items-start gap-3">
-            <div v-if="account.image" class="avatar shrink-0">
-              <div class="w-10 rounded-full">
-                <img :src="account.image" alt="" referrerpolicy="no-referrer" />
-              </div>
-            </div>
-            <span
-              v-else
-              aria-hidden="true"
-              class="grid size-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"
-            >
-              {{ account.name.slice(0, 1) }}
-            </span>
+            <AccountAvatar :image="account.image" :name="account.name" class="size-14" />
             <div class="min-w-0 flex-1">
               <h3 class="truncate text-lg font-bold">{{ account.name }}</h3>
-              <p class="mt-0.5 break-all text-sm text-base-content/70">{{ account.email }}</p>
+              <p class="mt-0.5 break-all text-sm text-base-content/70 leading-tight">{{ account.email }}</p>
             </div>
+            <button
+              type="button"
+              class="btn btn-ghost btn-xs shrink-0 font-normal"
+              aria-haspopup="dialog"
+              :disabled="session.signingOut || offline"
+              @click="profileEditor?.open(account)"
+            >
+              编辑资料
+            </button>
             <button
               type="button"
               class="btn btn-error btn-ghost btn-xs shrink-0 font-normal"
@@ -200,31 +244,28 @@ defineExpose({
             <div>
               <h3 class="text-lg font-bold">inYue</h3>
               <p class="mt-0.5 text-sm text-base-content/70">
-                inYue 是一个同时支持 Web 与 Android 的个人音乐听歌应用。
+                inYue, 你的私人音乐园地
               </p>
             </div>
           </div>
 
-          <dl class="mt-4 overflow-hidden rounded-box border border-base-300 text-sm">
-            <div class="grid gap-1 border-b border-base-300 p-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
+          <dl class="mt-2 text-sm">
+            <div class="grid grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-2">
               <dt class="font-medium text-base-content/70">构建</dt>
-              <dd class="break-words">{{ buildLabel }}</dd>
-            </div>
-            <div class="grid gap-1 border-b border-base-300 p-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
-              <dt class="font-medium text-base-content/70">GitHub</dt>
-              <dd class="min-w-0">
+              <dd class="flex items-center justify-between gap-2">
+                <span class="min-w-0 break-words">{{ buildLabel }}</span>
                 <a
                   :href="repositoryUrl"
-                  class="link link-hover inline-flex max-w-full items-center gap-1"
+                  class="btn btn-ghost btn-square btn-sm shrink-0"
                   :target="native ? undefined : '_blank'"
                   :rel="native ? undefined : 'noopener noreferrer'"
+                  aria-label="打开 GitHub 仓库"
                 >
-                  <span class="break-all">{{ repositoryLabel }}</span>
-                  <ExternalLink class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+                  <img :src="githubIcon" class="size-5 object-contain" alt="" />
                 </a>
               </dd>
             </div>
-            <div class="grid gap-1 p-3 sm:grid-cols-[6rem_minmax(0,1fr)]">
+            <div class="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-2">
               <dt class="font-medium text-base-content/70">版权</dt>
               <dd>© 2026 inYue</dd>
             </div>
@@ -233,14 +274,32 @@ defineExpose({
       </div>
 
       <footer class="safe-panel border-t border-base-300 p-3 sm:px-5">
-        <form method="dialog" class="flex justify-end">
+        <form method="dialog" class="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            class="btn btn-ghost"
+            :disabled="sharing || session.signingOut"
+            @click="shareApp"
+          >
+            <Share2 class="size-4" aria-hidden="true" />
+            分享 {{ appName }}
+          </button>
           <button type="submit" class="btn btn-ghost" :disabled="session.signingOut">关闭</button>
         </form>
+        <p role="status" class="text-sm text-base-content/70" :class="{ 'mt-1': shareFeedback }">
+          <template v-if="shareFeedback === 'copied'">已复制分享链接</template>
+          <template v-else-if="shareFeedback === 'failed'">分享失败，请重试。</template>
+          <template v-else-if="shareFeedback === 'manual'">
+            手动复制官网链接
+            <a class="link select-text" :href="officialSiteUrl">{{ officialSiteUrl }}</a>
+          </template>
+        </p>
       </footer>
     </div>
     <form method="dialog" class="modal-backdrop">
       <button tabindex="-1" :disabled="session.signingOut">关闭账户弹窗</button>
     </form>
   </dialog>
+  <AccountProfileDialog :key="account.id" ref="profileEditor" />
   <LogoutConfirmDialog ref="logoutConfirm" @confirm="session.logout()" />
 </template>

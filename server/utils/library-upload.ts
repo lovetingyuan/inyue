@@ -2,9 +2,9 @@ import { createError, getRequestHeader, readMultipartFormData } from "h3";
 import { audioMaxBytes, coverMaxBytes, uploadMaxBytes } from "../../shared/library-limits";
 import type { H3Event, MultiPartData } from "h3";
 
-export async function uploadForm(event: H3Event) {
+export async function uploadForm(event: H3Event, maxBytes = uploadMaxBytes) {
   const size = Number(getRequestHeader(event, "content-length"));
-  if (!Number.isSafeInteger(size) || size < 1 || size > uploadMaxBytes) {
+  if (!Number.isSafeInteger(size) || size < 1 || size > maxBytes) {
     throw createError({ statusCode: 413, statusMessage: "UPLOAD_SIZE" });
   }
   const parts = await readMultipartFormData(event);

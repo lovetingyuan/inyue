@@ -7,7 +7,12 @@ import { X } from "@lucide/vue";
 import type { Track } from "~~/shared/types/library";
 
 defineOptions({ name: "PlaybackQueueDialog" });
-defineProps<{ queue: Track[]; currentTrackId?: string; playing: boolean }>();
+defineProps<{
+  shortcutsEnabled: boolean;
+  queue: Track[];
+  currentTrackId?: string;
+  playing: boolean;
+}>();
 const emit = defineEmits<{ play: [trackId: string] }>();
 
 const dialog = useTemplateRef("dialog");
@@ -19,12 +24,22 @@ defineExpose({
 </script>
 
 <template>
-  <dialog ref="dialog" class="modal modal-bottom sm:modal-middle" aria-labelledby="queue-title">
+  <dialog
+    ref="dialog"
+    class="modal modal-bottom sm:modal-middle"
+    aria-labelledby="queue-title"
+    data-playback-shortcuts
+  >
     <div
       class="modal-box safe-panel grid max-h-[75dvh] grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden"
     >
       <div class="flex items-center justify-between gap-2">
-        <h2 id="queue-title" class="text-lg font-bold">
+        <h2
+          id="queue-title"
+          class="text-lg font-bold"
+          :tabindex="shortcutsEnabled ? -1 : undefined"
+          :autofocus="shortcutsEnabled"
+        >
           播放队列
           <span class="text-sm font-medium text-base-content/65">{{ queue.length }} 首</span>
         </h2>

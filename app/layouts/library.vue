@@ -2,6 +2,7 @@
 import { useSessionStore } from "~/stores/session";
 import { useAppStore } from "~/stores/app";
 import PlaylistNavigation from "~/components/PlaylistNavigation.vue";
+import AccountAvatar from "~/components/AccountAvatar.vue";
 import AccountSettingsDialog from "~/components/AccountSettingsDialog.vue";
 import { useTemplateRef, watch } from "vue";
 import { NuxtLink } from "#components";
@@ -14,6 +15,7 @@ import { usePlaylistQuery } from "~/composables/useLibraryQueries";
 
 defineOptions({ name: "LibraryLayout" });
 
+const isDev = import.meta.dev;
 const app = useAppStore();
 const { drawerOpen, offline } = storeToRefs(app);
 const { account, userId } = storeToRefs(useSessionStore());
@@ -79,7 +81,9 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
         >
           <Menu class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
         </button>
-        <span class="text-xl font-bold tracking-tight">inYue</span>
+        <span class="text-xl font-bold tracking-tight">
+          inYue <small v-if="isDev" class="text-xs font-medium text-base-content/65">dev</small>
+        </span>
         <span class="text-xs text-base-content/65" role="status">{{ offline ? "离线" : "" }}</span>
       </header>
       <main class="flex min-h-0 flex-1 flex-col">
@@ -107,7 +111,9 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
             @click="drawerOpen = false"
           >
             <img src="/assets/icon/inyue.svg" width="36" height="36" class="shrink-0" alt="" />
-            <span class="text-xl font-bold tracking-tight">inYue</span>
+            <span class="text-xl font-bold tracking-tight">
+              inYue <small v-if="isDev" class="text-xs font-medium text-base-content/65">dev</small>
+            </span>
           </NuxtLink>
           <span class="text-xs text-base-content/65" role="status">{{
             offline ? "离线" : ""
@@ -146,19 +152,7 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
             aria-haspopup="dialog"
             @click="profile?.open()"
           >
-            <img
-              v-if="account.image"
-              :src="account.image"
-              alt=""
-              referrerpolicy="no-referrer"
-              class="size-9 shrink-0 rounded-full object-cover"
-            />
-            <span
-              v-else
-              aria-hidden="true"
-              class="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"
-              >{{ account.name.slice(0, 1) }}</span
-            >
+            <AccountAvatar :image="account.image" :name="account.name" class="size-9" />
             <span class="min-w-0 truncate">{{ account.name }}</span>
           </button>
         </div>

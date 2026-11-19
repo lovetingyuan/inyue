@@ -11,6 +11,7 @@ import type { Component } from "vue";
 
 defineOptions({ name: "NowPlayingDialog" });
 defineProps<{
+  shortcutsEnabled: boolean;
   showLoadingRing: boolean;
   playbackMode: { label: string; icon: Component };
   modeLabel: string;
@@ -38,6 +39,7 @@ defineExpose({
     ref="dialog"
     class="modal"
     aria-labelledby="now-playing-title"
+    data-playback-shortcuts
     @close="progressBar?.resetPreview()"
   >
     <div
@@ -51,7 +53,14 @@ defineExpose({
             <ChevronDown class="size-6 shrink-0" :stroke-width="1.8" aria-hidden="true" />
           </button>
         </form>
-        <h2 id="now-playing-title" class="text-sm font-semibold text-base-content/70">正在播放</h2>
+        <h2
+          id="now-playing-title"
+          class="text-sm font-semibold text-base-content/70"
+          :tabindex="shortcutsEnabled ? -1 : undefined"
+          :autofocus="shortcutsEnabled"
+        >
+          正在播放
+        </h2>
       </header>
       <div v-if="track" class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-2.5 sm:px-8">
         <div class="m-auto grid w-full max-w-sm shrink-0 gap-[clamp(0.875rem,2.2dvh,1.375rem)]">
@@ -82,6 +91,8 @@ defineExpose({
               type="button"
               class="btn btn-ghost btn-circle btn-lg"
               aria-label="上一首"
+              :aria-keyshortcuts="shortcutsEnabled ? 'Shift+ArrowLeft' : undefined"
+              :title="shortcutsEnabled ? '上一首（Shift + ←）' : undefined"
               @click="player.step(-1)"
             >
               <SkipBack
@@ -96,6 +107,8 @@ defineExpose({
               class="btn btn-primary btn-circle relative size-16 shadow-lg shadow-primary/20"
               :aria-label="playing ? '暂停' : '播放'"
               :aria-busy="loading"
+              :aria-keyshortcuts="shortcutsEnabled ? 'Space' : undefined"
+              :title="shortcutsEnabled ? `${playing ? '暂停' : '播放'}（空格）` : undefined"
               @click="player.toggle()"
             >
               <span
@@ -115,6 +128,8 @@ defineExpose({
               type="button"
               class="btn btn-ghost btn-circle btn-lg"
               aria-label="下一首"
+              :aria-keyshortcuts="shortcutsEnabled ? 'Shift+ArrowRight' : undefined"
+              :title="shortcutsEnabled ? '下一首（Shift + →）' : undefined"
               @click="player.step(1)"
             >
               <SkipForward

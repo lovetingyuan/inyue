@@ -7,6 +7,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineNuxtConfig } from "nuxt/config";
 import { vueVitePlugin } from "vite-plugin-dom-source";
 import webManifest from "./public/manifest.json";
+import { appName, officialSiteUrl } from "./shared/app-brand";
 import { devPort } from "./shared/dev-server.mjs";
 import { defaultQuotaBytes } from "./shared/library-limits";
 
@@ -47,7 +48,7 @@ export default defineNuxtConfig({
   app: {
     head: {
       htmlAttrs: { lang: "zh-CN" },
-      title: "inYue",
+      title: appName,
       viewport: "width=device-width, initial-scale=1.0, viewport-fit=cover",
       script: [
         {
@@ -60,6 +61,11 @@ export default defineNuxtConfig({
         { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
       ],
       meta: [
+        { property: "og:title", content: appName },
+        { property: "og:type", content: "website" },
+        { property: "og:url", content: officialSiteUrl },
+        { property: "og:image", content: `${officialSiteUrl}/assets/imgs/logo.png` },
+        { property: "og:image:alt", content: `${appName} Logo` },
         {
           name: "theme-color",
           content: "#ffffff",

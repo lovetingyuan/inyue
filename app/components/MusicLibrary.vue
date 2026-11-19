@@ -117,9 +117,9 @@ function playFirst() {
         class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 pb-5 sm:px-6"
       >
         <div
-          class="flex shrink-0 items-center gap-3 rounded-box bg-linear-to-br from-primary/17 to-base-200/55 px-2 py-1.5 sm:gap-4 sm:px-3 sm:py-2"
+          class="flex shrink-0 items-center gap-3 rounded-box bg-linear-to-br from-primary/17 to-base-200/55 p-2 sm:gap-4 sm:p-3"
         >
-          <MusicArtwork :src="playlistCoverUrl" class="w-12 shadow-md sm:w-14" />
+          <MusicArtwork :src="playlistCoverUrl" class="w-12 shadow-md sm:w-14 rounded-xl" />
           <div class="min-w-0 flex-1">
             <h2
               class="line-clamp-2 wrap-anywhere text-lg leading-tight font-bold tracking-tight sm:text-xl"

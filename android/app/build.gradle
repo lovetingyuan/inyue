@@ -1,5 +1,9 @@
 apply plugin: 'com.android.application'
 
+if (providers.gradleProperty('inyueLiveReload').isPresent()) {
+    layout.buildDirectory.set(layout.projectDirectory.dir('../../temp/android-live-reload'))
+}
+
 android {
     namespace = "com.tingyuan.inyue"
     compileSdk = rootProject.ext.compileSdkVersion

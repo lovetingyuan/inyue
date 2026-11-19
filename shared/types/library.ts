@@ -28,11 +28,15 @@ export interface SongDetails extends Song {
   playlistIds: string[];
 }
 
-export interface Account {
+export interface AccountProfile {
   id: string;
   name: string;
-  email: string;
   image?: string | null;
+  hasCustomAvatar?: boolean;
+}
+
+export interface Account extends AccountProfile {
+  email: string;
   storage: { usedBytes: number; quotaBytes: number };
 }
 

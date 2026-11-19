@@ -5,6 +5,7 @@ import MusicArtwork from "~/components/MusicArtwork.vue";
 import { NuxtLink } from "#components";
 defineOptions({ name: "AccountLayout" });
 
+const isDev = import.meta.dev;
 const app = useAppStore();
 const session = useSessionStore();
 </script>
@@ -25,7 +26,9 @@ const session = useSessionStore();
         <div class="card-body gap-4 p-2 sm:p-4">
           <header class="mb-4 flex items-center gap-3">
             <img src="/assets/icon/inyue.svg" width="44" height="44" class="shrink-0" alt="" />
-            <h1 class="text-3xl font-bold tracking-tight">inYue</h1>
+            <h1 class="text-3xl font-bold tracking-tight">
+              inYue <small v-if="isDev" class="text-xs font-medium text-base-content/65">dev</small>
+            </h1>
           </header>
           <p v-if="app.offline" role="status">
             {{ session.account ? "当前离线。" : "当前离线，请联网登录。" }}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useAppStore } from "~/stores/app";
 import { usePlayerStore } from "~/stores/player";
 import PlaybackSlider from "~/components/PlaybackSlider.vue";
 import PlaybackQueueDialog from "~/components/PlaybackQueueDialog.vue";
@@ -18,14 +19,18 @@ import {
   Volume2,
   VolumeX,
 } from "@lucide/vue";
-import { useTimeoutFn } from "@vueuse/core";
+import { useEventListener, useTimeoutFn } from "@vueuse/core";
+import { useRouter } from "#app";
 import { storeToRefs } from "pinia";
 import type { PlaybackMode } from "~~/shared/types/library";
 
 defineOptions({ name: "LibraryPlayer" });
 
+const app = useAppStore();
 const player = usePlayerStore();
+const { currentRoute } = useRouter();
 const { current: track, queue, volume, playing, loading, mode, error } = storeToRefs(player);
+const shortcutsEnabled = computed(() => !app.native && currentRoute.value.path === "/");
 const showLoadingRing = ref(false);
 const { start: scheduleLoadingRing, stop: cancelLoadingRing } = useTimeoutFn(
   () => {
@@ -89,6 +94,57 @@ watch(
 
 function toggleMute() {
   return player.setVolume(volume.value === 0 ? lastAudibleVolume : 0);
+}
+
+if (!app.native) {
+  useEventListener("keydown", (event) => {
+    if (
+      event.defaultPrevented ||
+      event.isComposing ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey
+    ) {
+      return;
+    }
+
+    const toggle = !event.shiftKey && event.key === " ";
+    const step = event.shiftKey && (event.key === "ArrowLeft" || event.key === "ArrowRight");
+    if (
+      !(toggle || step) ||
+      !shortcutsEnabled.value ||
+      !track.value ||
+      app.drawerOpen ||
+      document.visibilityState !== "visible" ||
+      !document.hasFocus()
+    ) {
+      return;
+    }
+
+    const target = event.target;
+    if (
+      !(target instanceof Element) ||
+      (target instanceof HTMLElement && target.isContentEditable) ||
+      target.closest(
+        'input, textarea, select, [role="textbox"], [role="combobox"], [role="slider"]',
+      ) ||
+      (toggle && target.closest('button, a[href], summary, [role="button"]')) ||
+      (step && document.getSelection()?.isCollapsed === false) ||
+      document.querySelector("dialog[open]:not([data-playback-shortcuts])")
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    if (event.repeat) {
+      return;
+    }
+    if (toggle) {
+      void player.toggle();
+    } else {
+      void player.step(event.key === "ArrowLeft" ? -1 : 1);
+    }
+  });
 }
 
 function playQueuedTrack(trackId: string) {
@@ -159,6 +215,8 @@ async function cycleMode() {
             type="button"
             class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/12"
             aria-label="上一首"
+            :aria-keyshortcuts="shortcutsEnabled ? 'Shift+ArrowLeft' : undefined"
+            :title="shortcutsEnabled ? '上一首（Shift + ←）' : undefined"
             @click="player.step(-1)"
           >
             <SkipBack
@@ -173,6 +231,8 @@ async function cycleMode() {
             class="btn btn-circle relative size-10 border-0 bg-neutral-content text-neutral hover:bg-neutral-content/85"
             :aria-label="playing ? '暂停' : '播放'"
             :aria-busy="loading"
+            :aria-keyshortcuts="shortcutsEnabled ? 'Space' : undefined"
+            :title="shortcutsEnabled ? `${playing ? '暂停' : '播放'}（空格）` : undefined"
             @click="player.toggle()"
           >
             <span
@@ -192,6 +252,8 @@ async function cycleMode() {
             type="button"
             class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/12"
             aria-label="下一首"
+            :aria-keyshortcuts="shortcutsEnabled ? 'Shift+ArrowRight' : undefined"
+            :title="shortcutsEnabled ? '下一首（Shift + →）' : undefined"
             @click="player.step(1)"
           >
             <SkipForward
@@ -265,6 +327,7 @@ async function cycleMode() {
 
   <NowPlayingDialog
     ref="nowPlaying"
+    :shortcuts-enabled="shortcutsEnabled"
     :show-loading-ring="showLoadingRing"
     :playback-mode="playbackMode"
     :mode-label="modeLabel"
@@ -275,6 +338,7 @@ async function cycleMode() {
   />
   <PlaybackQueueDialog
     ref="queueDialog"
+    :shortcuts-enabled="shortcutsEnabled"
     :queue="queue"
     :current-track-id="track?.id"
     :playing="playing"

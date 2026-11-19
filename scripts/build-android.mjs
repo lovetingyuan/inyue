@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { lockAndroidBuild } from "./android-build-lock.mjs";
 
 const require = createRequire(import.meta.url);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -20,7 +21,9 @@ const environment = {
   NUXT_PUBLIC_INTEGRATION_PLAYBACK: "false",
 };
 
+let release;
 try {
+  release = lockAndroidBuild(root);
   const nuxt = join(dirname(require.resolve("nuxt/package.json")), "bin/nuxt.mjs");
   const capacitor = require.resolve("@capacitor/cli/bin/capacitor");
 
@@ -47,6 +50,8 @@ try {
 } catch (error) {
   console.error(`Android 构建失败：${error.message}`);
   process.exitCode = 1;
+} finally {
+  release?.();
 }
 
 function run(command, args, options = {}) {

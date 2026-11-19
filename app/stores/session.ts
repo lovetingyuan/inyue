@@ -7,7 +7,7 @@ import { useRouter } from "#app";
 import { useQuery, useQueryCache } from "@pinia/colada";
 import { defineStore } from "pinia";
 import { offlineExpiryHeader } from "~~/shared/offline-library";
-import type { Account } from "~~/shared/types/library";
+import type { Account, AccountProfile } from "~~/shared/types/library";
 import type { OfflineState } from "~/types/offline-library";
 import { responseStatus } from "~/utils/library-error";
 import { accountQueryKey, libraryKeys } from "~/utils/music-query-keys";
@@ -208,6 +208,49 @@ export const useSessionStore = defineStore("session", () => {
     void clearOfflineAccount(scope);
   }
 
+  async function saveAccountProfile(id: string, body: FormData) {
+    const revision = generation.value;
+    const scope = offlineScope.value;
+    if (userId.value !== id || signingOut.value) {
+      throw new DOMException("Account changed", "AbortError");
+    }
+    body.set("accountId", id);
+    const { _data: profile, headers } = await request<AccountProfile>("/api/account", {
+      method: "PATCH",
+      body,
+      timeout: 15_000,
+    });
+    const current = account.value;
+    if (
+      current?.id !== id ||
+      profile?.id !== id ||
+      revision !== generation.value ||
+      signingOut.value
+    ) {
+      throw new DOMException("Account changed", "AbortError");
+    }
+
+    const updated = { ...current, ...profile };
+    cache.cancelQueries({ key: accountQueryKey });
+    cache.setQueryData(accountQueryKey, updated);
+    const expiresAt = Number(headers.get(offlineExpiryHeader));
+    if (native || expiresAt > Date.now()) {
+      const storage = await import("~/utils/offline-library");
+      if (revision !== generation.value || signingOut.value) {
+        return;
+      }
+      const saved = await storage
+        .changeOfflineAccount(scope, { account: updated, expiresAt })
+        .catch(() => undefined);
+      if (revision === generation.value && !signingOut.value && saved?.profile?.account.id === id) {
+        offlineState.value = saved;
+        if (saved.revision !== revokedScope) {
+          revokedScope = undefined;
+        }
+      }
+    }
+  }
+
   async function syncOfflineSession() {
     const storage = await import("~/utils/offline-library");
     const state = await storage.readOfflineState().catch(() => undefined);
@@ -273,6 +316,7 @@ export const useSessionStore = defineStore("session", () => {
     rejectSession,
     refreshing: accountQuery.isLoading,
     refreshAccount: accountQuery.refetch,
+    saveAccountProfile,
     setConnection,
     signingOut,
     syncOfflineSession,
