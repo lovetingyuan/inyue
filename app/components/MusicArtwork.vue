@@ -20,7 +20,6 @@ watch(
 </script>
 
 <template>
-  
   <span
     class="relative grid aspect-square shrink-0 place-items-center overflow-hidden rounded-lg bg-artwork-background"
   >

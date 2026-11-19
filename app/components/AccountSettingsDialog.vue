@@ -186,7 +186,9 @@ defineExpose({
             <AccountAvatar :image="account.image" :name="account.name" class="size-14" />
             <div class="min-w-0 flex-1">
               <h3 class="truncate text-lg font-bold">{{ account.name }}</h3>
-              <p class="mt-0.5 break-all text-sm text-base-content/70 leading-tight">{{ account.email }}</p>
+              <p class="mt-0.5 break-all text-sm text-base-content/70 leading-tight">
+                {{ account.email }}
+              </p>
             </div>
             <button
               type="button"
@@ -243,9 +245,7 @@ defineExpose({
             <img src="/assets/icon/inyue.svg" width="48" height="48" class="shrink-0" alt="" />
             <div>
               <h3 class="text-lg font-bold">inYue</h3>
-              <p class="mt-0.5 text-sm text-base-content/70">
-                inYue, 你的私人音乐园地
-              </p>
+              <p class="mt-0.5 text-sm text-base-content/70">inYue, 你的私人音乐园地</p>
             </div>
           </div>
 

@@ -83,7 +83,8 @@ async function selectAvatar(event: Event) {
 }
 
 function toggleDefaultAvatar() {
-  resetAvatar.value = !avatar.value && Boolean(original.value?.hasCustomAvatar) && !resetAvatar.value;
+  resetAvatar.value =
+    !avatar.value && Boolean(original.value?.hasCustomAvatar) && !resetAvatar.value;
   avatar.value = undefined;
   avatarError.value = "";
   if (fileInput.value) {
