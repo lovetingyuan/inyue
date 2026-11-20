@@ -1,4 +1,5 @@
 export const accountQueryKey = ["account"] as const;
+export const offlineAudioChanged = "offline-audio-changed";
 
 export const libraryKeys = {
   user: (userId: string) => ["library", userId] as const,

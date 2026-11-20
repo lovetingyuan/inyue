@@ -1,4 +1,3 @@
-import { playlistFields } from "~~/server/utils/library-playlists";
 import { createError } from "h3";
 import { and, eq, getTableColumns } from "drizzle-orm";
 import { playlists } from "../database/library-schema";
@@ -24,7 +23,7 @@ export async function ownedPlaylist(
   id: string,
 ) {
   const playlist = await db
-    .select(playlistFields)
+    .select(fields)
     .from(playlists)
     .where(playlistOwner(owner, id))
     .get();

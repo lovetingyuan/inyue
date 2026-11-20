@@ -98,4 +98,3 @@ async function select(id: string) {
     </div>
   </div>
 </template>
-const app = useAppStore();

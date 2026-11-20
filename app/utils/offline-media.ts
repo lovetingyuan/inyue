@@ -1,12 +1,15 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { useEventBus } from "@vueuse/core";
 import { audioMaxBytes, coverMaxBytes } from "~~/shared/library-limits";
 import type { NativeOfflineMediaPlugin } from "~/types/native-offline-media";
 import { idbResult, offlineMaxAge, scopedKeys, withOfflineStore } from "./offline-library";
+import { offlineAudioChanged } from "./music-query-keys";
 
 const quota = 256 * 1024 * 1024;
 const rootName = "inyue-library-media";
 const idPattern = /^[\da-f-]{36}$/;
 const nativeMedia = registerPlugin<NativeOfflineMediaPlugin>("OfflineMedia");
+const audioChanges = useEventBus<string>(offlineAudioChanged);
 
 type Kind = "audio" | "cover";
 
@@ -59,11 +62,14 @@ async function deleteMedia(scope: string, directory: FileSystemDirectoryHandle, 
   await withOfflineStore(scope, "readwrite", (store) => {
     store.delete(mediaKey(scope, name));
   });
+  if (name.startsWith("audio-")) {
+    audioChanges.emit(scope);
+  }
 }
 
 export function removeOfflineAudio(scope: string, id: string) {
   if (Capacitor.isNativePlatform()) {
-    return nativeMedia.removeAudio({ scope, id });
+    return nativeMedia.removeAudio({ scope, id }).finally(() => audioChanges.emit(scope));
   }
   return locked(scope, async () => {
     const directory = await (await mediaRoot()).getDirectoryHandle(scope);
@@ -97,7 +103,7 @@ async function pruneMedia(
 
 export function pruneOfflineMedia(scope: string) {
   if (Capacitor.isNativePlatform()) {
-    return nativeMedia.clean({ scope });
+    return nativeMedia.clean({ scope }).finally(() => audioChanges.emit(scope));
   }
   return locked(scope, async () => {
     const entries = await mediaEntries(scope);
@@ -217,7 +223,9 @@ export function cacheOfflineMedia(
       ) {
         return;
       }
-      await nativeMedia.download({ scope, kind, id, origin, url });
+      await nativeMedia
+        .download({ scope, kind, id, origin, url })
+        .finally(() => audioChanges.emit(scope));
     })().catch(() => undefined);
   }
   return locked(scope, async () => {
@@ -299,6 +307,9 @@ export function cacheOfflineMedia(
             return true;
           }));
         if (saved) {
+          if (kind === "audio") {
+            audioChanges.emit(scope);
+          }
           return;
         }
         await deleteMedia(scope, directory, name);

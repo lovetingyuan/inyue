@@ -1,4 +1,3 @@
-import { songFields } from "~~/server/utils/library-songs";
 import { createError } from "h3";
 import { and, eq, getTableColumns } from "drizzle-orm";
 import { songs } from "../database/library-schema";
@@ -33,7 +32,7 @@ export function songOwner(userId: string, id: string) {
 }
 
 export async function ownedSong(db: ReturnType<typeof libraryDatabase>, owner: string, id: string) {
-  const song = await db.select(songFields).from(songs).where(songOwner(owner, id)).get();
+  const song = await db.select(fields).from(songs).where(songOwner(owner, id)).get();
   if (!song) {
     throw createError({ statusCode: 404, statusMessage: "SONG_NOT_FOUND" });
   }

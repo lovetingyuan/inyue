@@ -4,6 +4,7 @@ import { useLibraryStore } from "~/stores/library";
 import { useAppStore } from "~/stores/app";
 import { useMusicApi } from "~/composables/useMusicApi";
 import { computed, shallowRef, watch, watchEffect, type Ref } from "vue";
+import { useDebounceFn, useEventBus } from "@vueuse/core";
 import { useNuxtApp } from "#app";
 import { useInfiniteQuery, useQuery, useQueryCache, useQueryState } from "@pinia/colada";
 import type {
@@ -14,7 +15,7 @@ import type {
   SongPage,
 } from "~~/shared/types/library";
 import { responseStatus } from "~/utils/library-error";
-import { libraryKeys } from "~/utils/music-query-keys";
+import { libraryKeys, offlineAudioChanged } from "~/utils/music-query-keys";
 
 function connectionKey<T extends readonly unknown[]>(key: T, offline: boolean) {
   return offline ? ([...key, "offline"] as const) : key;
@@ -229,11 +230,36 @@ export function useSongListState() {
 export function useOfflineAudio() {
   const app = useAppStore();
   const session = useSessionStore();
+  const queryCache = useQueryCache();
+  const key = () =>
+    [...libraryKeys.user(session.userId), "offline-audio", session.offlineScope ?? ""] as const;
+
+  if (import.meta.client) {
+    const refresh = useDebounceFn((scope: string) => {
+      if (scope === session.offlineScope) {
+        return queryCache.invalidateQueries({ key: key(), exact: true });
+      }
+    }, 150);
+    useEventBus<string>(offlineAudioChanged).on((scope) => {
+      if (scope === session.offlineScope) {
+        void refresh(scope);
+      }
+    });
+    watch(
+      () => app.offline,
+      () => {
+        if (session.offlineScope) {
+          void refresh(session.offlineScope);
+        }
+      },
+    );
+  }
+
   return useQuery(() => {
     const scope = session.offlineScope;
     return {
-      key: [...libraryKeys.user(session.userId), "offline-audio", scope ?? ""],
-      enabled: app.offline && !!scope,
+      key: key(),
+      enabled: import.meta.client && !!scope,
       staleTime: 0,
       query: async () =>
         scope

@@ -17,7 +17,7 @@ import LibraryPlayer from "~/components/LibraryPlayer.vue";
 import { computed, ref, useTemplateRef, watch } from "vue";
 import { useAsyncState, useTimeoutFn } from "@vueuse/core";
 import { useRouter } from "#app";
-import { Clock, Ellipsis, Music, Play, Search } from "@lucide/vue";
+import { Clock, Ellipsis, FileCheck, Music, Play, Search } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { Song } from "~~/shared/types/library";
 import SongManagementDialog from "~/components/SongManagementDialog.vue";
@@ -244,13 +244,13 @@ async function playFirst() {
                 :aria-description="
                   app.offline && !offlineAudio?.has(song.id)
                     ? '音频未缓存'
-                    : current?.id === song.id
-                      ? playbackLoading
-                        ? '正在加载'
-                        : playing
-                          ? '正在播放'
-                          : undefined
-                      : undefined
+                    : [
+                        offlineAudio?.has(song.id) && '音频已缓存',
+                        current?.id === song.id &&
+                          (playbackLoading ? '正在加载' : playing && '正在播放'),
+                      ]
+                        .filter(Boolean)
+                        .join('，') || undefined
                 "
                 @click="play(song)"
               >
@@ -288,10 +288,19 @@ async function playFirst() {
                 />
                 <span class="min-w-0 flex-1">
                   <span
-                    class="block truncate text-sm font-semibold group-disabled:opacity-65"
+                    class="flex items-center gap-1.5 text-sm font-semibold group-disabled:opacity-65"
                     :class="{ 'text-primary': current?.id === song.id }"
-                    >{{ song.title }}</span
                   >
+                    <span class="truncate">{{ song.title }}</span>
+                    <span
+                      v-if="offlineAudio?.has(song.id)"
+                      class="tooltip inline-flex shrink-0"
+                      data-tip="已缓存"
+                      aria-hidden="true"
+                    >
+                      <FileCheck class="size-3 text-base-content/45" />
+                    </span>
+                  </span>
                   <span class="block truncate text-xs text-base-content/65"
                     >{{ song.artist
                     }}<span v-if="song.album" class="lg:hidden"> · {{ song.album }}</span></span
