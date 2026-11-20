@@ -6,7 +6,7 @@ import { libraryErrorCode, responseStatus } from "~/utils/library-error";
 import { showMusicDialog } from "~/utils/music-dialog";
 import { avatarFileTypes, prepareAvatar } from "~/utils/prepare-avatar";
 import { useObjectUrl } from "@vueuse/core";
-import { computed, nextTick, ref, shallowRef, useId, useTemplateRef } from "vue";
+import { computed, nextTick, ref, shallowRef, useId, useTemplateRef, watch } from "vue";
 import { isProfileName, profileNameMaxLength } from "~~/shared/account-profile";
 import type { AccountProfile } from "~~/shared/types/library";
 
@@ -145,6 +145,16 @@ async function save() {
   }
 }
 
+watch(
+  () => Boolean(original.value) && app.offline,
+  (offline) => {
+    if (offline) {
+      app.notifyOffline();
+    }
+  },
+  { immediate: true },
+);
+
 defineExpose({ open });
 </script>
 
@@ -159,71 +169,74 @@ defineExpose({ open });
     <div class="modal-box safe-panel max-w-md">
       <form v-if="original" class="grid gap-3" novalidate @submit.prevent="save">
         <h2 :id="`${fieldId}-title`" class="text-lg font-semibold">编辑资料</h2>
-        <div class="flex items-center gap-3">
-          <AccountAvatar :image="preview ?? original.image" :name="name" class="size-16 text-xl" />
-          <div class="grid min-w-0 flex-1 gap-1">
-            <label :for="`${fieldId}-avatar`" class="text-sm font-medium">选择头像</label>
-            <input
-              :id="`${fieldId}-avatar`"
-              ref="fileInput"
-              class="file-input file-input-sm w-full"
-              type="file"
-              :accept="avatarFileTypes"
-              :disabled="disabled"
-              :aria-invalid="Boolean(avatarError)"
-              :aria-describedby="avatarError ? `${fieldId}-avatar-error` : undefined"
-              @change="selectAvatar"
+        <fieldset class="grid min-w-0 gap-3" :disabled="saving || app.offline">
+          <div class="flex items-center gap-3">
+            <AccountAvatar
+              :image="preview ?? original.image"
+              :name="name"
+              class="size-16 text-xl"
             />
-            <p
-              v-if="preparing"
-              class="flex items-center gap-1.5 text-sm text-base-content/70"
-              role="status"
-            >
-              <span class="loading loading-spinner loading-xs" aria-hidden="true" /> 正在处理头像…
-            </p>
-            <p v-else-if="resetAvatar" class="text-sm text-base-content/70" role="status">
-              保存后恢复默认头像
+            <div class="grid min-w-0 flex-1 gap-1">
+              <label :for="`${fieldId}-avatar`" class="text-sm font-medium">选择头像</label>
+              <input
+                :id="`${fieldId}-avatar`"
+                ref="fileInput"
+                class="file-input file-input-sm w-full"
+                type="file"
+                :accept="avatarFileTypes"
+                :disabled="preparing"
+                :aria-invalid="Boolean(avatarError)"
+                :aria-describedby="avatarError ? `${fieldId}-avatar-error` : undefined"
+                @change="selectAvatar"
+              />
+              <p
+                v-if="preparing"
+                class="flex items-center gap-1.5 text-sm text-base-content/70"
+                role="status"
+              >
+                <span class="loading loading-spinner loading-xs" aria-hidden="true" />
+                正在处理头像…
+              </p>
+              <p v-else-if="resetAvatar" class="text-sm text-base-content/70" role="status">
+                保存后恢复默认头像
+              </p>
+            </div>
+          </div>
+          <button
+            v-if="original.hasCustomAvatar || avatar"
+            type="button"
+            class="btn btn-ghost btn-sm justify-self-start"
+            :disabled="preparing"
+            @click="toggleDefaultAvatar"
+          >
+            {{ avatar ? "撤销更换" : resetAvatar ? "撤销恢复" : "恢复默认头像" }}
+          </button>
+          <p
+            v-if="avatarError"
+            :id="`${fieldId}-avatar-error`"
+            class="text-sm text-error"
+            role="alert"
+          >
+            {{ avatarError }}
+          </p>
+          <div class="grid gap-1 text-sm">
+            <label :for="`${fieldId}-name`" class="font-medium">昵称</label>
+            <input
+              :id="`${fieldId}-name`"
+              v-model="name"
+              class="input w-full"
+              autocomplete="nickname"
+              required
+              :aria-invalid="Boolean(nameError)"
+              :aria-describedby="nameError ? `${fieldId}-name-error` : undefined"
+              @input="nameError = ''"
+            />
+            <p v-if="nameError" :id="`${fieldId}-name-error`" class="text-error" role="alert">
+              {{ nameError }}
             </p>
           </div>
-        </div>
-        <button
-          v-if="original.hasCustomAvatar || avatar"
-          type="button"
-          class="btn btn-ghost btn-sm justify-self-start"
-          :disabled="disabled"
-          @click="toggleDefaultAvatar"
-        >
-          {{ avatar ? "撤销更换" : resetAvatar ? "撤销恢复" : "恢复默认头像" }}
-        </button>
-        <p
-          v-if="avatarError"
-          :id="`${fieldId}-avatar-error`"
-          class="text-sm text-error"
-          role="alert"
-        >
-          {{ avatarError }}
-        </p>
-        <div class="grid gap-1 text-sm">
-          <label :for="`${fieldId}-name`" class="font-medium">昵称</label>
-          <input
-            :id="`${fieldId}-name`"
-            v-model="name"
-            class="input w-full"
-            autocomplete="nickname"
-            required
-            :disabled="saving || app.offline"
-            :aria-invalid="Boolean(nameError)"
-            :aria-describedby="nameError ? `${fieldId}-name-error` : undefined"
-            @input="nameError = ''"
-          />
-          <p v-if="nameError" :id="`${fieldId}-name-error`" class="text-error" role="alert">
-            {{ nameError }}
-          </p>
-        </div>
+        </fieldset>
         <p v-if="formError" class="text-sm text-error" role="alert">{{ formError }}</p>
-        <p v-if="app.offline" class="text-sm text-base-content/70" role="status">
-          联网后可保存资料。
-        </p>
         <div class="flex justify-end gap-2">
           <button type="button" class="btn btn-ghost" :disabled="saving" @click="dialog?.close()">
             取消

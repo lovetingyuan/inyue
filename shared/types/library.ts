@@ -37,6 +37,7 @@ export interface AccountProfile {
 
 export interface Account extends AccountProfile {
   email: string;
+  google?: boolean;
   storage: { usedBytes: number; quotaBytes: number };
 }
 

@@ -2,12 +2,18 @@
 import { useSessionStore } from "~/stores/session";
 import { useAppStore } from "~/stores/app";
 import MusicArtwork from "~/components/MusicArtwork.vue";
+import { computed } from "vue";
 import { NuxtLink } from "#components";
+import { useRoute } from "#app";
 defineOptions({ name: "AccountLayout" });
 
 const isDev = import.meta.dev;
 const app = useAppStore();
 const session = useSessionStore();
+const route = useRoute();
+const showOfflineFallback = computed(
+  () => app.offline && (Boolean(session.account) || route.meta.layout !== "account"),
+);
 </script>
 
 <template>
@@ -30,15 +36,15 @@ const session = useSessionStore();
               inYue <small v-if="isDev" class="text-xs font-medium text-base-content/65">dev</small>
             </h1>
           </header>
-          <p v-if="app.offline" role="status">
+          <p v-if="showOfflineFallback" role="status">
             {{ session.account ? "当前离线。" : "当前离线，请联网登录。" }}
           </p>
           <NuxtLink v-if="app.offline && session.account" to="/" class="btn btn-primary"
             >打开离线曲库</NuxtLink
           >
-          <div v-show="!app.offline" class="grid gap-4">
+          <div v-show="!showOfflineFallback" class="grid gap-4">
             <slot />
-            <p v-if="session.accountError" class="alert alert-error" role="alert">
+            <p v-if="!app.offline && session.accountError" class="alert alert-error" role="alert">
               {{ session.accountError }}
             </p>
           </div>

@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="app_background">#FBFAF7</color>
+    <color name="app_background_light">#FBFAF7</color>
+    <color name="app_background_dark">#191E1B</color>
+    <color name="app_background">@color/app_background_light</color>
 </resources>

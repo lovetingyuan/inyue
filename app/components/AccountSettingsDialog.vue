@@ -186,8 +186,17 @@ defineExpose({
             <AccountAvatar :image="account.image" :name="account.name" class="size-14" />
             <div class="min-w-0 flex-1">
               <h3 class="truncate text-lg font-bold">{{ account.name }}</h3>
-              <p class="mt-0.5 break-all text-sm text-base-content/70 leading-tight">
+              <p class="mt-0.5 break-all text-sm leading-tight text-base-content/70">
                 {{ account.email }}
+                <img
+                  v-if="account.google"
+                  src="/assets/icon/google-g.png"
+                  width="16"
+                  height="16"
+                  class="inline-block size-4 rounded-sm bg-google-icon-background object-contain p-0.5 align-text-bottom"
+                  alt="Google 登录"
+                  title="Google 登录"
+                />
               </p>
             </div>
             <button

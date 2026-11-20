@@ -5,7 +5,7 @@ import { useAppStore } from "~/stores/app";
 import { usePlaylistState, useSongDetailsState } from "~/composables/useLibraryQueries";
 import { useSongMembershipSave } from "~/composables/useLibraryMutations";
 import MusicArtwork from "~/components/MusicArtwork.vue";
-import { computed, nextTick, ref, useId, useTemplateRef } from "vue";
+import { computed, nextTick, ref, useId, useTemplateRef, watch } from "vue";
 const { data: song } = useSongDetailsState();
 const { playlists, covers } = usePlaylistState();
 const membership = useSongMembershipSave();
@@ -19,19 +19,21 @@ const app = useAppStore();
 const error = ref("");
 const playlistErrors = ref(new Map<string, string>());
 const partialSave = ref(false);
+const opened = ref(false);
 const changes = computed(() => {
   const saved = new Set(song.value?.playlistIds);
   return playlists.value.filter(({ id }) => selected.value.has(id) !== saved.has(id));
 });
 
 async function open() {
-  if (dialog.value?.open || !song.value) {
+  if (app.offline || dialog.value?.open || !song.value) {
     return;
   }
   selected.value = new Set(song.value.playlistIds);
   error.value = "";
   playlistErrors.value.clear();
   partialSave.value = false;
+  opened.value = true;
   await nextTick();
   showMusicDialog(dialog.value);
   if (list.value) {
@@ -76,6 +78,16 @@ async function save() {
   }
 }
 
+watch(
+  () => opened.value && app.offline,
+  (offline) => {
+    if (offline) {
+      app.notifyOffline();
+    }
+  },
+  { immediate: true },
+);
+
 defineExpose({ open });
 </script>
 
@@ -85,6 +97,7 @@ defineExpose({ open });
     class="modal modal-bottom sm:modal-middle open:visible"
     :aria-labelledby="titleId"
     @cancel="saving && $event.preventDefault()"
+    @close="opened = false"
   >
     <form
       class="modal-box flex max-h-[min(78dvh,36rem)] flex-col overflow-hidden p-0 sm:max-w-md"
@@ -102,11 +115,11 @@ defineExpose({ open });
         </h2>
       </header>
       <div ref="list" class="min-h-0 overflow-y-auto overscroll-contain px-3 py-2 sm:px-4">
-        <fieldset class="min-w-0" :disabled="saving" aria-label="选择歌单">
+        <fieldset class="min-w-0" :disabled="saving || app.offline" aria-label="选择歌单">
           <ul v-if="playlists.length" class="grid gap-1">
             <li v-for="item in playlists" :key="item.id">
               <label
-                class="validator flex min-h-14 cursor-pointer items-center gap-3 rounded-field border px-2.5 py-2 hover:bg-base-200/80 has-checked:bg-primary/10"
+                class="validator flex min-h-14 cursor-pointer items-center gap-3 rounded-field border px-2.5 py-2 hover:bg-base-200/80 has-checked:bg-primary/10 has-disabled:cursor-not-allowed has-disabled:opacity-60"
                 :class="
                   playlistErrors.has(item.id)
                     ? 'border-error'

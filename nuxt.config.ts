@@ -68,13 +68,19 @@ export default defineNuxtConfig({
         { property: "og:image:alt", content: `${appName} Logo` },
         {
           name: "theme-color",
-          content: "#ffffff",
+          content: "#fbfaf7",
           media: "(prefers-color-scheme: light)",
         },
         {
           name: "theme-color",
-          content: "#16171d",
+          content: "#191e1b",
           media: "(prefers-color-scheme: dark)",
+        },
+      ],
+      style: [
+        {
+          innerHTML:
+            'html,body{background-color:var(--color-base-100,#fbfaf7)}@media(prefers-color-scheme:dark){html:not([data-theme="light"]),html:not([data-theme="light"]) body{background-color:var(--color-base-100,#191e1b)}}html[data-theme="dark"],html[data-theme="dark"] body{background-color:var(--color-base-100,#191e1b)}',
         },
       ],
     },

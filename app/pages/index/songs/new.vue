@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useAppStore } from "~/stores/app";
 import SongEditor from "~/components/SongEditor.vue";
 import { onBeforeRouteLeave } from "vue-router";
 import { useTemplateRef } from "vue";
@@ -8,7 +7,6 @@ import { ArrowLeft } from "@lucide/vue";
 defineOptions({ name: "NewSong" });
 
 const router = useRouter();
-const app = useAppStore();
 const editor = useTemplateRef("editor");
 useHead({ title: "新增歌曲 · inYue" });
 
@@ -36,7 +34,7 @@ onBeforeRouteLeave(() => !editor.value?.busy);
         </button>
         <h1 id="new-song-title" class="text-base font-semibold">新增歌曲</h1>
       </header>
-      <SongEditor v-show="!app.offline" ref="editor" @cancel="leave" @saved="leave" />
+      <SongEditor ref="editor" @cancel="leave" @saved="leave" />
     </div>
   </section>
 </template>

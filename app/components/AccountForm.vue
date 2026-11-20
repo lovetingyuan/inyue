@@ -2,7 +2,7 @@
 import { useSessionStore } from "~/stores/session";
 import { useAppStore } from "~/stores/app";
 import { useAccountActions } from "~/composables/useAccountActions";
-import { computed, reactive, ref, shallowRef, toRefs, useTemplateRef } from "vue";
+import { computed, reactive, ref, shallowRef, toRefs, useTemplateRef, watch } from "vue";
 import type { AccountFormMode } from "~/types/account";
 import { googleLoginError, libraryReturnPath } from "~/utils/account-navigation";
 
@@ -32,8 +32,19 @@ const credentialsInvalid = ref(false);
 const emailInput = useTemplateRef<HTMLInputElement>("emailInput");
 const activeAction = shallowRef<() => Promise<void>>();
 const busy = computed(() => Boolean(activeAction.value));
+const disabled = computed(() => busy.value || app.offline);
 const invalidToken = ref(false);
 const invalidReset = computed(() => mode.value === "reset" && (!props.token || invalidToken.value));
+
+watch(
+  () => !invalidReset.value && app.offline,
+  (offline) => {
+    if (offline) {
+      app.notifyOffline();
+    }
+  },
+  { immediate: true },
+);
 
 function clearCredentialsError() {
   if (!credentialsInvalid.value) {
@@ -60,7 +71,7 @@ function validateEmail() {
 }
 
 async function run(action: () => Promise<void>) {
-  if (busy.value) {
+  if (disabled.value) {
     return;
   }
   activeAction.value = action;
@@ -191,87 +202,91 @@ async function google() {
     重置链接无效或已过期，请重新发送重置邮件。
   </p>
   <form v-if="!invalidReset" class="grid gap-3" novalidate @submit.prevent="run(submit)">
-    <div v-if="mode === 'register'" class="grid gap-1.5 text-sm">
-      <label for="account-name" class="font-medium">昵称</label>
-      <input
-        id="account-name"
-        v-model.trim="name"
-        class="input validator w-full"
-        autocomplete="nickname"
-        required
-        :disabled="busy"
-        :aria-invalid="!!accountFields.name"
-        :aria-describedby="accountFields.name ? 'account-name-error' : undefined"
-        @input="accountFields.name = ''"
-      />
-      <p v-if="accountFields.name" id="account-name-error" class="validator-hint mt-0" role="alert">
-        {{ accountFields.name }}
-      </p>
-    </div>
-    <div v-if="mode !== 'reset'" class="grid gap-1.5 text-sm">
-      <label for="account-email" class="font-medium">邮箱</label>
-      <input
-        id="account-email"
-        ref="emailInput"
-        v-model.trim="email"
-        type="email"
-        class="input validator w-full"
-        autocomplete="email"
-        required
-        :disabled="busy"
-        :aria-invalid="!!accountFields.email || credentialsInvalid"
-        :aria-describedby="
-          accountFields.email
-            ? 'account-email-error'
-            : credentialsInvalid
-              ? 'account-password-error'
-              : undefined
-        "
-        @input="
-          accountFields.email = '';
-          clearCredentialsError();
-        "
-      />
-      <p
-        v-if="accountFields.email"
-        id="account-email-error"
-        class="validator-hint mt-0"
-        role="alert"
-      >
-        {{ accountFields.email }}
-      </p>
-    </div>
-    <div v-if="mode !== 'forgot'" class="grid gap-1.5 text-sm">
-      <label for="account-password" class="font-medium">密码</label>
-      <input
-        id="account-password"
-        v-model="password"
-        type="password"
-        class="input validator w-full"
-        :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
-        required
-        minlength="8"
-        :disabled="busy"
-        :aria-invalid="!!accountFields.password"
-        :aria-describedby="accountFields.password ? 'account-password-error' : undefined"
-        @input="
-          accountFields.password = '';
-          clearCredentialsError();
-        "
-      />
-      <p
-        v-if="accountFields.password"
-        id="account-password-error"
-        class="validator-hint mt-0"
-        role="alert"
-      >
-        {{ accountFields.password }}
-      </p>
-    </div>
+    <fieldset class="grid min-w-0 gap-3" :disabled="disabled">
+      <div v-if="mode === 'register'" class="grid gap-1.5 text-sm">
+        <label for="account-name" class="font-medium">昵称</label>
+        <input
+          id="account-name"
+          v-model.trim="name"
+          class="input validator w-full"
+          autocomplete="nickname"
+          required
+          :aria-invalid="!!accountFields.name"
+          :aria-describedby="accountFields.name ? 'account-name-error' : undefined"
+          @input="accountFields.name = ''"
+        />
+        <p
+          v-if="accountFields.name"
+          id="account-name-error"
+          class="validator-hint mt-0"
+          role="alert"
+        >
+          {{ accountFields.name }}
+        </p>
+      </div>
+      <div v-if="mode !== 'reset'" class="grid gap-1.5 text-sm">
+        <label for="account-email" class="font-medium">邮箱</label>
+        <input
+          id="account-email"
+          ref="emailInput"
+          v-model.trim="email"
+          type="email"
+          class="input validator w-full"
+          autocomplete="email"
+          required
+          :aria-invalid="!!accountFields.email || credentialsInvalid"
+          :aria-describedby="
+            accountFields.email
+              ? 'account-email-error'
+              : credentialsInvalid
+                ? 'account-password-error'
+                : undefined
+          "
+          @input="
+            accountFields.email = '';
+            clearCredentialsError();
+          "
+        />
+        <p
+          v-if="accountFields.email"
+          id="account-email-error"
+          class="validator-hint mt-0"
+          role="alert"
+        >
+          {{ accountFields.email }}
+        </p>
+      </div>
+      <div v-if="mode !== 'forgot'" class="grid gap-1.5 text-sm">
+        <label for="account-password" class="font-medium">密码</label>
+        <input
+          id="account-password"
+          v-model="password"
+          type="password"
+          class="input validator w-full"
+          :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
+          required
+          minlength="8"
+          :aria-invalid="!!accountFields.password"
+          :aria-describedby="accountFields.password ? 'account-password-error' : undefined"
+          @input="
+            accountFields.password = '';
+            clearCredentialsError();
+          "
+        />
+        <p
+          v-if="accountFields.password"
+          id="account-password-error"
+          class="validator-hint mt-0"
+          role="alert"
+        >
+          {{ accountFields.password }}
+        </p>
+      </div>
+    </fieldset>
     <button
       id="account-submit"
       class="btn btn-primary mt-2"
-      :disabled="busy"
+      :disabled="disabled"
       :aria-busy="activeAction === submit"
     >
       <span
@@ -288,7 +303,7 @@ async function google() {
       v-if="mode === 'login'"
       class="btn btn-ghost btn-sm"
       type="button"
-      :disabled="busy"
+      :disabled="disabled"
       :aria-busy="activeAction === resend"
       @click="run(resend)"
     >
@@ -304,7 +319,7 @@ async function google() {
     v-if="mode === 'login' && googleClientId"
     class="btn btn-outline w-full"
     type="button"
-    :disabled="busy"
+    :disabled="disabled"
     :aria-busy="activeAction === google"
     @click="run(google)"
   >

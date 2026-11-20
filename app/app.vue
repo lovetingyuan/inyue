@@ -4,11 +4,13 @@ import { useAppStore } from "~/stores/app";
 import { useAppSession } from "~/composables/useAppSession";
 import StartupScreen from "~/components/StartupScreen.vue";
 import IntegrationPlaybackView from "~/components/IntegrationPlaybackView.vue";
+import AppToast from "~/components/AppToast.vue";
 import { computed, onServerPrefetch, watch } from "vue";
 import { NuxtLayout, NuxtPage, NuxtPwaManifest, NuxtRouteAnnouncer } from "#components";
 import { navigateTo, useHead, useNuxtApp, useRouter, useRuntimeConfig } from "#app";
 import { useStorage } from "@vueuse/core";
 import { storeToRefs } from "pinia";
+import type { AppTheme } from "~/types/native-theme";
 import { libraryReturnPath } from "~/utils/account-navigation";
 
 defineOptions({ name: "App" });
@@ -22,8 +24,8 @@ const integrationPlayback = useRuntimeConfig().public.integrationPlayback;
 
 useAppSession();
 
-const theme = useStorage("music-theme", storeToRefs(app).theme, undefined, {
-  initOnMounted: true,
+const theme = useStorage<AppTheme>("music-theme", storeToRefs(app).theme, undefined, {
+  initOnMounted: nuxtApp.payload.serverRendered,
   listenToStorageChanges: false,
   writeDefaults: false,
   serializer: {
@@ -36,6 +38,21 @@ useHead({
     "data-theme": () => (theme.value === "system" ? undefined : theme.value),
   },
 });
+
+if (import.meta.client) {
+  watch(
+    theme,
+    (value) => {
+      if (!app.native) {
+        return;
+      }
+      void import("~/utils/native-theme")
+        .then(({ syncNativeTheme }) => syncNativeTheme(value))
+        .catch(() => {});
+    },
+    { immediate: true },
+  );
+}
 
 const accountRoute = computed(() => route.value.meta.layout === "account");
 const libraryVisible = computed(
@@ -102,4 +119,5 @@ if (import.meta.server) {
       :key="session.userId"
     />
   </NuxtLayout>
+  <AppToast />
 </template>

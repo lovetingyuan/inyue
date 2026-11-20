@@ -5,7 +5,7 @@ import { useAppStore } from "~/stores/app";
 import { usePlaylistState } from "~/composables/useLibraryQueries";
 import { useLibraryDelete, usePlaylistSave } from "~/composables/useLibraryMutations";
 import MusicArtwork from "~/components/MusicArtwork.vue";
-import { computed, nextTick, reactive, ref, shallowRef, useId, useTemplateRef } from "vue";
+import { computed, nextTick, reactive, ref, shallowRef, useId, useTemplateRef, watch } from "vue";
 import { X } from "@lucide/vue";
 import { useObjectUrl } from "@vueuse/core";
 import { coverMaxBytes } from "~~/shared/library-limits";
@@ -111,6 +111,16 @@ function closePanel() {
   playlistCover.value = undefined;
 }
 
+watch(
+  () => panel.value === "playlist" && app.offline,
+  (offline) => {
+    if (offline) {
+      app.notifyOffline();
+    }
+  },
+  { immediate: true },
+);
+
 defineExpose({ open });
 </script>
 
@@ -130,69 +140,70 @@ defineExpose({ open });
         @submit.prevent="savePlaylist"
       >
         <h2 class="text-lg font-semibold">{{ playlistEdit ? "编辑歌单" : "新建歌单" }}</h2>
-        <div class="grid gap-1">
-          <label :for="`${playlistFieldId}-name`">歌单名称</label>
-          <input
-            :id="`${playlistFieldId}-name`"
-            v-model.trim="playlistName"
-            class="input validator w-full"
-            required
-            maxlength="250"
-            :disabled="pending"
-            :aria-invalid="!!playlistErrors.name"
-            :aria-describedby="playlistErrors.name ? `${playlistFieldId}-name-error` : undefined"
-            @input="playlistErrors.name = ''"
-          />
-          <p
-            v-if="playlistErrors.name"
-            :id="`${playlistFieldId}-name-error`"
-            class="validator-hint mt-0"
-            role="alert"
-          >
-            {{ playlistErrors.name }}
-          </p>
-        </div>
-        <div class="grid gap-1">
-          <span v-if="hasPlaylistCover">封面</span>
-          <label v-else :for="`${playlistFieldId}-cover`">封面</label>
-          <div v-if="hasPlaylistCover" class="relative w-fit">
-            <MusicArtwork
-              :src="
-                playlistCoverPreview ??
-                (playlistEdit?.coverId ? covers[playlistEdit.coverId] : undefined)
-              "
-              class="w-28"
+        <fieldset class="grid min-w-0 gap-3" :disabled="pending || app.offline">
+          <div class="grid gap-1">
+            <label :for="`${playlistFieldId}-name`">歌单名称</label>
+            <input
+              :id="`${playlistFieldId}-name`"
+              v-model.trim="playlistName"
+              class="input validator w-full"
+              required
+              maxlength="250"
+              :aria-invalid="!!playlistErrors.name"
+              :aria-describedby="playlistErrors.name ? `${playlistFieldId}-name-error` : undefined"
+              @input="playlistErrors.name = ''"
             />
-            <button
-              type="button"
-              class="btn btn-circle btn-sm absolute top-1 right-1"
-              aria-label="移除封面"
-              :disabled="pending"
-              @click="clearPlaylistCover"
+            <p
+              v-if="playlistErrors.name"
+              :id="`${playlistFieldId}-name-error`"
+              class="validator-hint mt-0"
+              role="alert"
             >
-              <X class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
-            </button>
+              {{ playlistErrors.name }}
+            </p>
           </div>
-          <input
-            v-else
-            :id="`${playlistFieldId}-cover`"
-            class="file-input validator w-full"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            :disabled="pending"
-            :aria-invalid="!!playlistErrors.cover"
-            :aria-describedby="playlistErrors.cover ? `${playlistFieldId}-cover-error` : undefined"
-            @change="selectPlaylistCover"
-          />
-          <p
-            v-if="playlistErrors.cover"
-            :id="`${playlistFieldId}-cover-error`"
-            class="validator-hint mt-0"
-            role="alert"
-          >
-            {{ playlistErrors.cover }}
-          </p>
-        </div>
+          <div class="grid gap-1">
+            <span v-if="hasPlaylistCover">封面</span>
+            <label v-else :for="`${playlistFieldId}-cover`">封面</label>
+            <div v-if="hasPlaylistCover" class="relative w-fit">
+              <MusicArtwork
+                :src="
+                  playlistCoverPreview ??
+                  (playlistEdit?.coverId ? covers[playlistEdit.coverId] : undefined)
+                "
+                class="w-28"
+              />
+              <button
+                type="button"
+                class="btn btn-circle btn-sm absolute top-1 right-1"
+                aria-label="移除封面"
+                @click="clearPlaylistCover"
+              >
+                <X class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+              </button>
+            </div>
+            <input
+              v-else
+              :id="`${playlistFieldId}-cover`"
+              class="file-input validator w-full"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              :aria-invalid="!!playlistErrors.cover"
+              :aria-describedby="
+                playlistErrors.cover ? `${playlistFieldId}-cover-error` : undefined
+              "
+              @change="selectPlaylistCover"
+            />
+            <p
+              v-if="playlistErrors.cover"
+              :id="`${playlistFieldId}-cover-error`"
+              class="validator-hint mt-0"
+              role="alert"
+            >
+              {{ playlistErrors.cover }}
+            </p>
+          </div>
+        </fieldset>
         <p v-if="dialogError" class="text-sm text-error" role="alert">{{ dialogError }}</p>
         <div class="flex flex-wrap justify-end gap-2">
           <button
