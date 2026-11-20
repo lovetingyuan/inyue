@@ -31,9 +31,15 @@ export const usePlayerStore = defineStore("player", () => {
   const loading = ref(false);
   const error = ref("");
   const pendingTrack = shallowRef<Omit<Track, "url">>();
-  const current = computed(
-    () => pendingTrack.value ?? tracks.value.find((track) => track.id === id.value),
-  );
+  const currentArtwork = shallowRef<{ trackId: string; url: string }>();
+  const current = computed(() => {
+    if (pendingTrack.value) {
+      return pendingTrack.value;
+    }
+    const track = tracks.value.find((item) => item.id === id.value);
+    const artwork = currentArtwork.value;
+    return track && artwork?.trackId === track.id ? { ...track, coverUrl: artwork.url } : track;
+  });
   const queue = computed(() => {
     const byId = new Map(tracks.value.map((track) => [track.id, track]));
     return order.value.flatMap((trackId) => byId.get(trackId) ?? []);
@@ -56,7 +62,6 @@ export const usePlayerStore = defineStore("player", () => {
   let selection: AbortController | undefined;
   let mediaWrites: AbortController | undefined;
   let audioUrl: string | undefined;
-  let artworkUrl: string | undefined;
   let nativeResumeAfterError = false;
   const cachingTracks = new Set<string>();
 
@@ -156,10 +161,11 @@ export const usePlayerStore = defineStore("player", () => {
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl);
     }
-    if (artworkUrl) {
-      URL.revokeObjectURL(artworkUrl);
+    if (currentArtwork.value) {
+      URL.revokeObjectURL(currentArtwork.value.url);
     }
-    audioUrl = artworkUrl = undefined;
+    audioUrl = undefined;
+    currentArtwork.value = undefined;
   }
 
   function mediaUrlIsFresh(url: string) {
@@ -210,9 +216,8 @@ export const usePlayerStore = defineStore("player", () => {
           await saveOfflineSongs(scope, [_data]);
         }
       }
-      const coverId = track.coverUrl && new URL(track.coverUrl).pathname.split("/").at(-1);
-      if (coverId && track.coverUrl) {
-        void cacheOfflineMedia(scope, "cover", coverId, track.coverUrl, signal, origin);
+      if (track.coverId && track.coverUrl) {
+        void cacheOfflineMedia(scope, "cover", track.coverId, track.coverUrl, signal, origin);
       }
       await audio;
       if (native && !signal.aborted && track.id !== id.value) {
@@ -239,16 +244,12 @@ export const usePlayerStore = defineStore("player", () => {
     if (!scope) {
       return;
     }
-    const [{ readOfflineMedia }, { readOfflineSong }] = await Promise.all([
-      import("~/utils/offline-media"),
-      import("~/utils/offline-library"),
-    ]);
+    const { readOfflineMedia } = await import("~/utils/offline-media");
     const url = await readOfflineMedia(scope, "audio", track.id);
     if (typeof url !== "string") {
       return;
     }
-    const song = await readOfflineSong(scope, track.id).catch(() => undefined);
-    const cover = song?.coverId ? await readOfflineMedia(scope, "cover", song.coverId) : undefined;
+    const cover = track.coverId ? await readOfflineMedia(scope, "cover", track.coverId) : undefined;
     return { ...track, url, coverUrl: typeof cover === "string" ? cover : track.coverUrl };
   }
 
@@ -516,27 +517,22 @@ export const usePlayerStore = defineStore("player", () => {
       if (autoplay) {
         playWeb(output);
       }
-      if (scope && media) {
-        const { readOfflineSong } = await import("~/utils/offline-library");
-        const song = await readOfflineSong(scope, track.id).catch(() => undefined);
-        const cover = song?.coverId && (await media.readOfflineMedia(scope, "cover", song.coverId));
+      if (scope && media && track.coverId) {
+        const cover = await media.readOfflineMedia(scope, "cover", track.coverId);
         if (revision !== ownerRevision || signal?.aborted) {
           return;
         }
         if (cover instanceof Blob) {
-          artworkUrl = URL.createObjectURL(cover);
-          tracks.value = tracks.value.map((item) =>
-            item.id === track.id ? { ...item, coverUrl: artworkUrl ?? null } : item,
-          );
+          currentArtwork.value = { trackId: track.id, url: URL.createObjectURL(cover) };
         }
       }
       if ("mediaSession" in navigator) {
+        const artwork = currentArtwork.value?.url ?? track.coverUrl;
         navigator.mediaSession.metadata = new MediaMetadata({
           title: track.title,
           artist: track.artist,
           album: track.album ?? "",
-          artwork:
-            artworkUrl || track.coverUrl ? [{ src: artworkUrl ?? track.coverUrl ?? "" }] : [],
+          artwork: artwork ? [{ src: artwork }] : [],
         });
       }
     }
@@ -620,11 +616,18 @@ export const usePlayerStore = defineStore("player", () => {
         tracks.value.map((track) => [track.id, track]),
       );
       for (const song of songs) {
-        byId.set(song.id, { ...song, coverUrl: byId.get(song.id)?.coverUrl ?? null });
+        const previous = byId.get(song.id);
+        byId.set(song.id, {
+          ...song,
+          coverUrl: previous?.coverId === song.coverId ? (previous.coverUrl ?? null) : null,
+        });
       }
       const pending = pendingTrack.value;
       if (pending) {
-        byId.set(pending.id, pending);
+        byId.set(pending.id, {
+          ...pending,
+          coverUrl: pending.coverUrl?.startsWith("blob:") ? null : pending.coverUrl,
+        });
       }
       for (const trackId of list) {
         if (generation !== ownerRevision || controller?.signal.aborted) {

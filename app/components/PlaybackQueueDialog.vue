@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { showMusicDialog } from "~/utils/music-dialog";
+import { useCoverQuery } from "~/composables/useLibraryQueries";
 import PlayingBars from "~/components/PlayingBars.vue";
 import MusicArtwork from "~/components/MusicArtwork.vue";
-import { useTemplateRef } from "vue";
+import { ref, useTemplateRef } from "vue";
 import { X } from "@lucide/vue";
 import type { Track } from "~~/shared/types/library";
 
 defineOptions({ name: "PlaybackQueueDialog" });
-defineProps<{
+const props = defineProps<{
   shortcutsEnabled: boolean;
   queue: Track[];
   currentTrackId?: string;
@@ -16,9 +17,16 @@ defineProps<{
 const emit = defineEmits<{ play: [trackId: string] }>();
 
 const dialog = useTemplateRef("dialog");
+const open = ref(false);
+const { urls: covers } = useCoverQuery(() =>
+  open.value ? props.queue.flatMap(({ coverId }) => (coverId ? [coverId] : [])) : [],
+);
 
 defineExpose({
-  open: () => showMusicDialog(dialog.value),
+  open: () => {
+    showMusicDialog(dialog.value);
+    open.value = Boolean(dialog.value?.open);
+  },
   close: () => dialog.value?.close(),
 });
 </script>
@@ -29,6 +37,7 @@ defineExpose({
     class="modal modal-bottom sm:modal-middle"
     aria-labelledby="queue-title"
     data-playback-shortcuts
+    @close="open = false"
   >
     <div
       class="modal-box safe-panel grid max-h-[75dvh] grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden"
@@ -58,7 +67,7 @@ defineExpose({
             :class="{ 'bg-primary/10': item.id === currentTrackId }"
             @click="emit('play', item.id)"
           >
-            <MusicArtwork :src="item.coverUrl" class="w-9" />
+            <MusicArtwork :src="item.coverId ? covers[item.coverId] : item.coverUrl" class="w-9" />
             <span class="min-w-0 flex-1">
               <span class="block truncate text-sm font-semibold">{{ item.title }}</span>
               <span class="block truncate text-xs font-normal text-base-content/65">{{

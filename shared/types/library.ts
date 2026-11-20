@@ -48,6 +48,7 @@ export interface Track {
   year: number | null;
   duration: number | null;
   url: string;
+  coverId: string | null;
   coverUrl: string | null;
 }
 

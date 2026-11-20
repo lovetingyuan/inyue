@@ -68,6 +68,7 @@ export default defineEventHandler(async (event) => {
     tracks: await Promise.all(
       tracks.map(async ({ audioId, coverId, ...track }) => ({
         ...track,
+        coverId,
         url: await address(audioId),
         coverUrl: coverId ? await address(coverId) : null,
       })),
