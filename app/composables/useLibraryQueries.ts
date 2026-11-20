@@ -218,15 +218,6 @@ export function useSongDetailsState() {
   );
 }
 
-export function useSongListState() {
-  const session = useSessionStore();
-  const library = useLibraryStore();
-  const app = useAppStore();
-  return useQueryState(() =>
-    connectionKey(libraryKeys.songPages(session.userId, library.filters), app.offline),
-  );
-}
-
 export function useOfflineAudio() {
   const app = useAppStore();
   const session = useSessionStore();

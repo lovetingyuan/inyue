@@ -21,11 +21,12 @@ const coverUrl = computed(() => {
     covers.urls.value[id] ?? (id === props.initialSong.coverId ? props.initialCoverUrl : undefined)
   );
 });
-const loading = computed(
-  () => !details.value && (!queryError.value || asyncStatus.value === "loading"),
-);
 const error = computed(() =>
-  queryError.value ? (app.offline ? "歌曲详情尚未缓存。" : libraryError(queryError.value)) : "",
+  !details.value && queryError.value && asyncStatus.value !== "loading"
+    ? app.offline
+      ? "歌曲详情尚未缓存。"
+      : libraryError(queryError.value)
+    : "",
 );
 const albumAndYear = computed(() => {
   const { album, year } = song.value;
@@ -89,33 +90,28 @@ const playlistButton = useTemplateRef("playlistButton");
         </p>
       </section>
     </div>
-    <p
-      v-if="loading"
-      class="flex shrink-0 items-center gap-2 px-4 py-4 text-sm text-base-content/70 sm:px-6"
-      role="status"
-    >
-      <span class="loading loading-spinner loading-xs" aria-hidden="true" /> 加载中…
-    </p>
-    <p
-      v-else-if="!details && error"
-      class="shrink-0 px-4 py-4 text-sm text-error sm:px-6"
-      role="alert"
-    >
+    <p v-if="error" class="shrink-0 px-4 py-4 text-sm text-error sm:px-6" role="alert">
       {{ error }}
     </p>
     <footer
-      v-if="details && !app.offline"
+      v-if="!app.offline"
       class="flex shrink-0 flex-wrap items-center gap-1 border-t border-base-300/70 px-4 pt-3 pb-[calc(0.75rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))] sm:gap-2 sm:px-6"
     >
       <button
         type="button"
-        class="btn btn-ghost text-error"
+        class="btn btn-error btn-ghost"
         aria-label="删除歌曲"
+        :disabled="!details"
         @click="emit('delete')"
       >
         <Trash2 class="size-4" aria-hidden="true" /> 删除
       </button>
-      <button type="button" class="btn btn-ghost ml-auto" @click="emit('edit', details)">
+      <button
+        type="button"
+        class="btn btn-ghost ml-auto"
+        :disabled="!details"
+        @click="details && emit('edit', details)"
+      >
         <Pencil class="size-4" aria-hidden="true" /> 编辑
       </button>
       <button
@@ -123,6 +119,7 @@ const playlistButton = useTemplateRef("playlistButton");
         type="button"
         class="btn btn-primary"
         aria-haspopup="dialog"
+        :disabled="!details"
         @click="
           playlistButton?.focus();
           emit('playlists');

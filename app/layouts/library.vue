@@ -128,21 +128,17 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
             <X class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
           </button>
         </div>
-        <nav aria-label="曲库" class="flex min-h-0 flex-1 flex-col gap-2 px-3 pb-3">
+        <nav aria-label="曲库" class="flex min-h-0 flex-1 flex-col gap-2">
           <NuxtLink
             v-if="!offline"
             to="/songs/new"
-            class="btn btn-ghost shrink-0 justify-start gap-3 px-3 font-medium"
+            class="btn btn-ghost mx-3 shrink-0 justify-start gap-3 px-3 font-medium"
             active-class="bg-primary/10 text-primary"
             @click="drawerOpen = false"
           >
             <Plus class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" /> 新增歌曲
           </NuxtLink>
-          <div
-            class="min-h-0 overflow-y-auto overscroll-contain scrollbar-thin scrollbar-thumb-base-content/50 scrollbar-track-transparent"
-          >
-            <PlaylistNavigation @edit="playlistEditor?.open($event)" />
-          </div>
+          <PlaylistNavigation @edit="playlistEditor?.open($event)" />
         </nav>
         <div v-if="account" class="mt-auto shrink-0 border-t border-base-300 p-2">
           <button
