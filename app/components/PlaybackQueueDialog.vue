@@ -70,7 +70,11 @@ defineExpose({
           <span class="text-sm font-medium text-base-content/65">{{ queue.length }} 首</span>
         </h2>
         <form method="dialog">
-          <button class="btn btn-ghost btn-circle btn-sm" aria-label="关闭播放队列" :disabled="selecting">
+          <button
+            class="btn btn-ghost btn-circle btn-sm"
+            aria-label="关闭播放队列"
+            :disabled="selecting"
+          >
             <X class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
           </button>
         </form>

@@ -174,7 +174,11 @@ defineExpose({ open });
               :aria-describedby="avatarError ? `${fieldId}-avatar-error` : undefined"
               @change="selectAvatar"
             />
-            <p v-if="preparing" class="flex items-center gap-1.5 text-sm text-base-content/70" role="status">
+            <p
+              v-if="preparing"
+              class="flex items-center gap-1.5 text-sm text-base-content/70"
+              role="status"
+            >
               <span class="loading loading-spinner loading-xs" aria-hidden="true" /> 正在处理头像…
             </p>
             <p v-else-if="resetAvatar" class="text-sm text-base-content/70" role="status">
@@ -224,7 +228,12 @@ defineExpose({ open });
           <button type="button" class="btn btn-ghost" :disabled="saving" @click="dialog?.close()">
             取消
           </button>
-          <button type="submit" class="btn btn-primary" :disabled="disabled || !dirty" :aria-busy="saving">
+          <button
+            type="submit"
+            class="btn btn-primary"
+            :disabled="disabled || !dirty"
+            :aria-busy="saving"
+          >
             <span v-if="saving" class="loading loading-spinner loading-xs" aria-hidden="true" />
             保存
           </button>

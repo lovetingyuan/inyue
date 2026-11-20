@@ -291,7 +291,7 @@ defineExpose({ busy });
         >
           <span
             class="grid size-9 shrink-0 place-items-center rounded-field bg-primary/10 text-primary"
->
+          >
             <span v-if="reading" class="loading loading-spinner loading-xs" aria-hidden="true" />
             <Music v-else class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
           </span>
@@ -477,7 +477,12 @@ defineExpose({ busy });
       <button class="btn btn-ghost" type="button" :disabled="busy" @click="emit('cancel')">
         取消
       </button>
-      <button type="submit" class="btn btn-primary" :disabled="mediaBusy || app.offline" :aria-busy="busy">
+      <button
+        type="submit"
+        class="btn btn-primary"
+        :disabled="mediaBusy || app.offline"
+        :aria-busy="busy"
+      >
         <span v-if="busy" class="loading loading-spinner loading-xs" aria-hidden="true" />
         保存
       </button>

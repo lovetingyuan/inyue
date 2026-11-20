@@ -74,7 +74,10 @@ async function load() {
   await player.play();
 }
 
-function run(name: NonNullable<typeof activeAction.value>, action: () => Promise<void> | undefined) {
+function run(
+  name: NonNullable<typeof activeAction.value>,
+  action: () => Promise<void> | undefined,
+) {
   if (busy.value || releaseOperation) {
     return;
   }
@@ -133,7 +136,11 @@ defineExpose({ release });
       :aria-busy="activeAction === 'load'"
       @click="run('load', load)"
     >
-      <span v-if="activeAction === 'load'" class="loading loading-spinner loading-xs" aria-hidden="true" />
+      <span
+        v-if="activeAction === 'load'"
+        class="loading loading-spinner loading-xs"
+        aria-hidden="true"
+      />
       载入并播放测试音频
     </button>
     <div class="flex flex-wrap gap-2">
@@ -144,7 +151,11 @@ defineExpose({ release });
         :aria-busy="activeAction === 'play'"
         @click="run('play', () => player?.play())"
       >
-        <span v-if="activeAction === 'play'" class="loading loading-spinner loading-xs" aria-hidden="true" />
+        <span
+          v-if="activeAction === 'play'"
+          class="loading loading-spinner loading-xs"
+          aria-hidden="true"
+        />
         播放
       </button>
       <button
@@ -154,7 +165,11 @@ defineExpose({ release });
         :aria-busy="activeAction === 'pause'"
         @click="run('pause', () => player?.pause())"
       >
-        <span v-if="activeAction === 'pause'" class="loading loading-spinner loading-xs" aria-hidden="true" />
+        <span
+          v-if="activeAction === 'pause'"
+          class="loading loading-spinner loading-xs"
+          aria-hidden="true"
+        />
         暂停
       </button>
       <button
@@ -164,7 +179,11 @@ defineExpose({ release });
         :aria-busy="activeAction === 'seek'"
         @click="run('seek', () => player?.seekTo({ position: 8 }))"
       >
-        <span v-if="activeAction === 'seek'" class="loading loading-spinner loading-xs" aria-hidden="true" />
+        <span
+          v-if="activeAction === 'seek'"
+          class="loading loading-spinner loading-xs"
+          aria-hidden="true"
+        />
         跳到 8 秒
       </button>
       <button
@@ -174,7 +193,11 @@ defineExpose({ release });
         :aria-busy="activeAction === 'skip'"
         @click="run('skip', () => player?.skipForward())"
       >
-        <span v-if="activeAction === 'skip'" class="loading loading-spinner loading-xs" aria-hidden="true" />
+        <span
+          v-if="activeAction === 'skip'"
+          class="loading loading-spinner loading-xs"
+          aria-hidden="true"
+        />
         下一首
       </button>
     </div>

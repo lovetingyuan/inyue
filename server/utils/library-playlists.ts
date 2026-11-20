@@ -22,11 +22,7 @@ export async function ownedPlaylist(
   owner: string,
   id: string,
 ) {
-  const playlist = await db
-    .select(fields)
-    .from(playlists)
-    .where(playlistOwner(owner, id))
-    .get();
+  const playlist = await db.select(fields).from(playlists).where(playlistOwner(owner, id)).get();
   if (!playlist) {
     throw createError({ statusCode: 404, statusMessage: "PLAYLIST_NOT_FOUND" });
   }

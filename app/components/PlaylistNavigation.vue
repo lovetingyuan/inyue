@@ -82,7 +82,10 @@ async function select(id: string) {
         :action="() => select(item.id)"
       >
         <template #icon>
-          <MusicArtwork :src="item.coverId ? covers[item.coverId] : undefined" class="w-6 shrink-0" />
+          <MusicArtwork
+            :src="item.coverId ? covers[item.coverId] : undefined"
+            class="w-6 shrink-0"
+          />
         </template>
         <span class="min-w-0 truncate">{{ item.name }}</span>
       </AsyncButton>

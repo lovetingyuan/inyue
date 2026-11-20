@@ -30,7 +30,7 @@ const error = ref(props.initialError ?? "");
 const accountFields = reactive({ name: "", email: "", password: "" });
 const credentialsInvalid = ref(false);
 const emailInput = useTemplateRef<HTMLInputElement>("emailInput");
-const activeAction = shallowRef<(() => Promise<void>)>();
+const activeAction = shallowRef<() => Promise<void>>();
 const busy = computed(() => Boolean(activeAction.value));
 const invalidToken = ref(false);
 const invalidReset = computed(() => mode.value === "reset" && (!props.token || invalidToken.value));
@@ -274,7 +274,11 @@ async function google() {
       :disabled="busy"
       :aria-busy="activeAction === submit"
     >
-      <span v-if="activeAction === submit" class="loading loading-spinner loading-xs" aria-hidden="true" />
+      <span
+        v-if="activeAction === submit"
+        class="loading loading-spinner loading-xs"
+        aria-hidden="true"
+      />
       {{ { login: "登录", register: "注册", forgot: "发送重置邮件", reset: "保存密码" }[mode] }}
     </button>
   </form>
@@ -288,7 +292,11 @@ async function google() {
       :aria-busy="activeAction === resend"
       @click="run(resend)"
     >
-      <span v-if="activeAction === resend" class="loading loading-spinner loading-xs" aria-hidden="true" />
+      <span
+        v-if="activeAction === resend"
+        class="loading loading-spinner loading-xs"
+        aria-hidden="true"
+      />
       重发验证邮件
     </button>
   </div>
@@ -300,8 +308,13 @@ async function google() {
     :aria-busy="activeAction === google"
     @click="run(google)"
   >
-    <span v-if="activeAction === google" class="loading loading-spinner loading-xs" aria-hidden="true" />
-    <img v-else
+    <span
+      v-if="activeAction === google"
+      class="loading loading-spinner loading-xs"
+      aria-hidden="true"
+    />
+    <img
+      v-else
       src="/assets/icon/google-g.png"
       width="18"
       height="18"

@@ -149,7 +149,11 @@ defineExpose({
               :aria-busy="changingMode"
               @click="emit('cycleMode')"
             >
-              <span v-if="changingMode" class="loading loading-spinner loading-xs" aria-hidden="true" />
+              <span
+                v-if="changingMode"
+                class="loading loading-spinner loading-xs"
+                aria-hidden="true"
+              />
               <component
                 v-else
                 :is="playbackMode.icon"
@@ -198,7 +202,11 @@ defineExpose({
               :aria-busy="refreshingQueue"
               @click="emit('refreshQueue')"
             >
-              <span v-if="refreshingQueue" class="loading loading-spinner loading-xs" aria-hidden="true" />
+              <span
+                v-if="refreshingQueue"
+                class="loading loading-spinner loading-xs"
+                aria-hidden="true"
+              />
               刷新队列
             </button>
           </div>

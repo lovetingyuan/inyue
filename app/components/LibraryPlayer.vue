@@ -160,7 +160,11 @@ async function cycleMode() {
 <template>
   <footer v-if="track || error || refreshingQueue" class="@container/player shrink-0">
     <div class="px-3 py-2 @min-[40rem]/player:px-4 @min-[40rem]/player:pb-3">
-      <div v-if="error || refreshingQueue" role="alert" class="alert alert-error alert-soft mb-2 text-sm">
+      <div
+        v-if="error || refreshingQueue"
+        role="alert"
+        class="alert alert-error alert-soft mb-2 text-sm"
+      >
         {{ error }}
         <button
           class="btn btn-xs"
@@ -168,7 +172,11 @@ async function cycleMode() {
           :aria-busy="refreshingQueue"
           @click="refreshQueue()"
         >
-          <span v-if="refreshingQueue" class="loading loading-spinner loading-xs" aria-hidden="true" />
+          <span
+            v-if="refreshingQueue"
+            class="loading loading-spinner loading-xs"
+            aria-hidden="true"
+          />
           刷新队列
         </button>
       </div>
@@ -200,8 +208,12 @@ async function cycleMode() {
             <span class="block truncate text-xs text-neutral-content/70">{{ track.artist }}</span>
           </span>
         </button>
-        <div class="contents @min-[48rem]/player:flex @min-[48rem]/player:flex-col @min-[48rem]/player:items-center">
-          <div class="flex items-center gap-0.5 @max-[48rem]/player:col-span-2 @min-[48rem]/player:gap-2">
+        <div
+          class="contents @min-[48rem]/player:flex @min-[48rem]/player:flex-col @min-[48rem]/player:items-center"
+        >
+          <div
+            class="flex items-center gap-0.5 @max-[48rem]/player:col-span-2 @min-[48rem]/player:gap-2"
+          >
             <AsyncButton
               class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/12"
               aria-label="上一首"
@@ -261,7 +273,11 @@ async function cycleMode() {
               :aria-busy="changingMode"
               @click="cycleMode"
             >
-              <span v-if="changingMode" class="loading loading-spinner loading-xs" aria-hidden="true" />
+              <span
+                v-if="changingMode"
+                class="loading loading-spinner loading-xs"
+                aria-hidden="true"
+              />
               <component
                 v-else
                 :is="playbackMode.icon"
@@ -291,7 +307,11 @@ async function cycleMode() {
               :action="toggleMute"
             >
               <template #icon>
-                <component :is="volume === 0 ? VolumeX : Volume2" class="size-4" aria-hidden="true" />
+                <component
+                  :is="volume === 0 ? VolumeX : Volume2"
+                  class="size-4"
+                  aria-hidden="true"
+                />
               </template>
             </AsyncButton>
             <PlaybackSlider

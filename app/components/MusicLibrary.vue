@@ -197,7 +197,12 @@ async function playFirst() {
         </div>
         <div v-else-if="error || retrying" class="alert alert-error alert-soft mt-4" role="alert">
           {{ error }}
-          <button class="btn btn-sm" :disabled="retrying" :aria-busy="retrying" @click="retryLibrary()">
+          <button
+            class="btn btn-sm"
+            :disabled="retrying"
+            :aria-busy="retrying"
+            @click="retryLibrary()"
+          >
             <span v-if="retrying" class="loading loading-spinner loading-xs" aria-hidden="true" />
             重试
           </button>

@@ -49,7 +49,11 @@ defineExpose({
           :aria-busy="session.signingOut"
           @click="confirmLogout"
         >
-          <span v-if="session.signingOut" class="loading loading-spinner loading-xs" aria-hidden="true" />
+          <span
+            v-if="session.signingOut"
+            class="loading loading-spinner loading-xs"
+            aria-hidden="true"
+          />
           退出登录
         </button>
       </div>

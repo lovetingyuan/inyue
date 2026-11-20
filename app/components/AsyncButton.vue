@@ -24,7 +24,12 @@ async function run() {
 </script>
 
 <template>
-  <button type="button" :disabled="disabled || pending" :aria-busy="loading || pending" @click="run">
+  <button
+    type="button"
+    :disabled="disabled || pending"
+    :aria-busy="loading || pending"
+    @click="run"
+  >
     <span
       v-if="loading || pending"
       class="loading loading-spinner loading-xs shrink-0"
