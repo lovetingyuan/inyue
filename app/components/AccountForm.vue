@@ -2,7 +2,7 @@
 import { useSessionStore } from "~/stores/session";
 import { useAppStore } from "~/stores/app";
 import { useAccountActions } from "~/composables/useAccountActions";
-import { computed, reactive, ref, toRefs, useTemplateRef } from "vue";
+import { computed, reactive, ref, shallowRef, toRefs, useTemplateRef } from "vue";
 import type { AccountFormMode } from "~/types/account";
 import { googleLoginError, libraryReturnPath } from "~/utils/account-navigation";
 
@@ -30,7 +30,8 @@ const error = ref(props.initialError ?? "");
 const accountFields = reactive({ name: "", email: "", password: "" });
 const credentialsInvalid = ref(false);
 const emailInput = useTemplateRef<HTMLInputElement>("emailInput");
-const busy = ref(false);
+const activeAction = shallowRef<(() => Promise<void>)>();
+const busy = computed(() => Boolean(activeAction.value));
 const invalidToken = ref(false);
 const invalidReset = computed(() => mode.value === "reset" && (!props.token || invalidToken.value));
 
@@ -62,7 +63,7 @@ async function run(action: () => Promise<void>) {
   if (busy.value) {
     return;
   }
-  busy.value = true;
+  activeAction.value = action;
   notice.value = "";
   error.value = "";
   clearAccountFields();
@@ -113,7 +114,7 @@ async function run(action: () => Promise<void>) {
     }
     error.value = "操作失败，请检查网络和输入后重试。";
   } finally {
-    busy.value = false;
+    activeAction.value = undefined;
   }
 }
 
@@ -267,7 +268,13 @@ async function google() {
         {{ accountFields.password }}
       </p>
     </div>
-    <button id="account-submit" class="btn btn-primary mt-2" :disabled="busy">
+    <button
+      id="account-submit"
+      class="btn btn-primary mt-2"
+      :disabled="busy"
+      :aria-busy="activeAction === submit"
+    >
+      <span v-if="activeAction === submit" class="loading loading-spinner loading-xs" aria-hidden="true" />
       {{ { login: "登录", register: "注册", forgot: "发送重置邮件", reset: "保存密码" }[mode] }}
     </button>
   </form>
@@ -278,8 +285,10 @@ async function google() {
       class="btn btn-ghost btn-sm"
       type="button"
       :disabled="busy"
+      :aria-busy="activeAction === resend"
       @click="run(resend)"
     >
+      <span v-if="activeAction === resend" class="loading loading-spinner loading-xs" aria-hidden="true" />
       重发验证邮件
     </button>
   </div>
@@ -288,9 +297,11 @@ async function google() {
     class="btn btn-outline w-full"
     type="button"
     :disabled="busy"
+    :aria-busy="activeAction === google"
     @click="run(google)"
   >
-    <img
+    <span v-if="activeAction === google" class="loading loading-spinner loading-xs" aria-hidden="true" />
+    <img v-else
       src="/assets/icon/google-g.png"
       width="18"
       height="18"

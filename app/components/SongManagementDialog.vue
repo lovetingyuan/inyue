@@ -106,7 +106,13 @@ defineExpose({ open });
         <p v-if="dialogError" class="text-sm text-error" role="alert">{{ dialogError }}</p>
         <div class="flex justify-end gap-2">
           <button class="btn" :disabled="pending" @click="dialog?.close()">取消</button>
-          <button class="btn btn-error" :disabled="pending || app.offline" @click="removeSong">
+          <button
+            class="btn btn-error"
+            :disabled="pending || app.offline"
+            :aria-busy="pending"
+            @click="removeSong"
+          >
+            <span v-if="pending" class="loading loading-spinner loading-xs" aria-hidden="true" />
             确认删除
           </button>
         </div>

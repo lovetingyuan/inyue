@@ -286,12 +286,15 @@ defineExpose({ busy });
                 ? `${fieldId}-audio-notice`
                 : undefined
           "
+          :aria-busy="reading"
           @click="audioInput?.click()"
         >
           <span
             class="grid size-9 shrink-0 place-items-center rounded-field bg-primary/10 text-primary"
-            ><Music class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true"
-          /></span>
+>
+            <span v-if="reading" class="loading loading-spinner loading-xs" aria-hidden="true" />
+            <Music v-else class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+          </span>
           <span class="min-w-0 flex-1">
             <span class="block text-sm">
               {{ audio ? "更换 MP3" : "选择 MP3"
@@ -387,7 +390,8 @@ defineExpose({ busy });
             :aria-busy="pasting"
             @click="pasteCover"
           >
-            <ClipboardPaste class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+            <span v-if="pasting" class="loading loading-spinner loading-xs" aria-hidden="true" />
+            <ClipboardPaste v-else class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
           </button>
           <button
             v-if="hasCover || oversizedCover"
@@ -473,8 +477,9 @@ defineExpose({ busy });
       <button class="btn btn-ghost" type="button" :disabled="busy" @click="emit('cancel')">
         取消
       </button>
-      <button class="btn btn-primary" :disabled="mediaBusy || app.offline">
-        {{ busy ? "保存中…" : "保存" }}
+      <button type="submit" class="btn btn-primary" :disabled="mediaBusy || app.offline" :aria-busy="busy">
+        <span v-if="busy" class="loading loading-spinner loading-xs" aria-hidden="true" />
+        保存
       </button>
     </div>
   </form>

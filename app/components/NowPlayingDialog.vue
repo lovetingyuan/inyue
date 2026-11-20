@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { showMusicDialog } from "~/utils/music-dialog";
+import AsyncButton from "~/components/AsyncButton.vue";
 import { usePlayerStore } from "~/stores/player";
 import PlaybackSlider from "~/components/PlaybackSlider.vue";
 import PlaybackProgress from "~/components/PlaybackProgress.vue";
@@ -12,15 +13,16 @@ import type { Component } from "vue";
 defineOptions({ name: "NowPlayingDialog" });
 defineProps<{
   shortcutsEnabled: boolean;
-  showLoadingRing: boolean;
+  refreshingQueue: boolean;
   playbackMode: { label: string; icon: Component };
   modeLabel: string;
   changingMode: boolean;
   muteLabel: string;
+  toggleMute: () => Promise<void>;
 }>();
 const emit = defineEmits<{
   cycleMode: [];
-  toggleMute: [];
+  refreshQueue: [];
 }>();
 
 const player = usePlayerStore();
@@ -87,68 +89,69 @@ defineExpose({
           </div>
           <PlaybackProgress ref="progressBar" layout="stacked" />
           <div class="flex items-center justify-center gap-6 sm:gap-8">
-            <button
-              type="button"
+            <AsyncButton
               class="btn btn-ghost btn-circle btn-lg"
               aria-label="上一首"
               :aria-keyshortcuts="shortcutsEnabled ? 'Shift+ArrowLeft' : undefined"
               :title="shortcutsEnabled ? '上一首（Shift + ←）' : undefined"
-              @click="player.step(-1)"
+              :action="() => player.step(-1)"
             >
-              <SkipBack
-                class="size-6 shrink-0"
-                :stroke-width="1.8"
-                aria-hidden="true"
-                fill="currentColor"
-              />
-            </button>
-            <button
-              type="button"
+              <template #icon>
+                <SkipBack
+                  class="size-6 shrink-0"
+                  :stroke-width="1.8"
+                  aria-hidden="true"
+                  fill="currentColor"
+                />
+              </template>
+            </AsyncButton>
+            <AsyncButton
               class="btn btn-primary btn-circle relative size-16 shadow-lg shadow-primary/20"
               :aria-label="playing ? '暂停' : '播放'"
-              :aria-busy="loading"
+              :loading="loading"
               :aria-keyshortcuts="shortcutsEnabled ? 'Space' : undefined"
               :title="shortcutsEnabled ? `${playing ? '暂停' : '播放'}（空格）` : undefined"
-              @click="player.toggle()"
+              :action="player.toggle"
             >
-              <span
-                v-if="showLoadingRing"
-                aria-hidden="true"
-                class="pointer-events-none absolute -inset-1 animate-spin rounded-full border-2 border-primary/25 border-t-primary"
-              />
-              <component
-                :is="playing ? Pause : Play"
-                class="size-7 shrink-0"
-                :stroke-width="1.8"
-                aria-hidden="true"
-                fill="currentColor"
-              />
-            </button>
-            <button
-              type="button"
+              <template #icon>
+                <component
+                  :is="playing ? Pause : Play"
+                  class="size-7 shrink-0"
+                  :stroke-width="1.8"
+                  aria-hidden="true"
+                  fill="currentColor"
+                />
+              </template>
+            </AsyncButton>
+            <AsyncButton
               class="btn btn-ghost btn-circle btn-lg"
               aria-label="下一首"
               :aria-keyshortcuts="shortcutsEnabled ? 'Shift+ArrowRight' : undefined"
               :title="shortcutsEnabled ? '下一首（Shift + →）' : undefined"
-              @click="player.step(1)"
+              :action="() => player.step(1)"
             >
-              <SkipForward
-                class="size-6 shrink-0"
-                :stroke-width="1.8"
-                aria-hidden="true"
-                fill="currentColor"
-              />
-            </button>
+              <template #icon>
+                <SkipForward
+                  class="size-6 shrink-0"
+                  :stroke-width="1.8"
+                  aria-hidden="true"
+                  fill="currentColor"
+                />
+              </template>
+            </AsyncButton>
           </div>
           <div class="flex items-center justify-between gap-3 rounded-2xl bg-base-200/75 p-1">
             <button
               type="button"
-              class="btn btn-ghost h-11 shrink-0 gap-2 rounded-xl px-3 aria-disabled:opacity-60"
+              class="btn btn-ghost h-11 shrink-0 gap-2 rounded-xl px-3 disabled:opacity-60"
               :aria-label="modeLabel"
-              :aria-disabled="changingMode"
+              :disabled="changingMode"
+              :aria-busy="changingMode"
               @click="emit('cycleMode')"
             >
+              <span v-if="changingMode" class="loading loading-spinner loading-xs" aria-hidden="true" />
               <component
+                v-else
                 :is="playbackMode.icon"
                 class="size-4 shrink-0"
                 :stroke-width="1.8"
@@ -157,19 +160,20 @@ defineExpose({
               <span aria-live="polite">{{ playbackMode.label }}</span>
             </button>
             <div class="flex min-w-0 max-w-32 flex-1 items-center gap-1 pr-3 text-base-content/70">
-              <button
-                type="button"
+              <AsyncButton
                 class="btn btn-ghost btn-circle btn-sm shrink-0"
                 :aria-label="muteLabel"
                 :title="muteLabel"
-                @click="emit('toggleMute')"
+                :action="toggleMute"
               >
-                <component
-                  :is="volume === 0 ? VolumeX : Volume2"
-                  class="size-4"
-                  aria-hidden="true"
-                />
-              </button>
+                <template #icon>
+                  <component
+                    :is="volume === 0 ? VolumeX : Volume2"
+                    class="size-4"
+                    aria-hidden="true"
+                  />
+                </template>
+              </AsyncButton>
               <PlaybackSlider
                 aria-label="音量"
                 data-playback-volume
@@ -183,11 +187,20 @@ defineExpose({
             </div>
           </div>
           <div
-            v-if="error"
+            v-if="error || refreshingQueue"
             class="flex items-center justify-between gap-2 text-sm text-error"
             role="alert"
           >
-            {{ error }} <button class="btn btn-xs" @click="player.refresh()">刷新队列</button>
+            {{ error }}
+            <button
+              class="btn btn-xs"
+              :disabled="refreshingQueue"
+              :aria-busy="refreshingQueue"
+              @click="emit('refreshQueue')"
+            >
+              <span v-if="refreshingQueue" class="loading loading-spinner loading-xs" aria-hidden="true" />
+              刷新队列
+            </button>
           </div>
         </div>
       </div>

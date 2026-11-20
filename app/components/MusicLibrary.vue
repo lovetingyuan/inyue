@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AsyncButton from "~/components/AsyncButton.vue";
 import { formatMusicTime } from "~/utils/format-music-time";
 import { libraryError } from "~/utils/library-error";
 import { usePlayerStore } from "~/stores/player";
@@ -13,10 +14,10 @@ import {
 import PlayingBars from "~/components/PlayingBars.vue";
 import MusicArtwork from "~/components/MusicArtwork.vue";
 import LibraryPlayer from "~/components/LibraryPlayer.vue";
-import { computed, useTemplateRef } from "vue";
-import { NuxtLink } from "#components";
+import { computed, ref, useTemplateRef, watch } from "vue";
+import { useAsyncState, useTimeoutFn } from "@vueuse/core";
 import { useRouter } from "#app";
-import { Clock, Ellipsis, LoaderCircle, Music, Play, Search } from "@lucide/vue";
+import { Clock, Ellipsis, Music, Play, Search } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { Song } from "~~/shared/types/library";
 import SongManagementDialog from "~/components/SongManagementDialog.vue";
@@ -64,24 +65,43 @@ const playlistCoverUrl = computed(() => {
   return id && !term.value ? coverUrls.value[id] : undefined;
 });
 
-async function retryLibrary() {
-  await Promise.all([songQuery.refetch(), retryPlaylists()]);
-  if (songCovers.error.value) {
-    void songCovers.refetch();
+const { isLoading: retrying, executeImmediate: retryLibrary } = useAsyncState(
+  async () => {
+    await Promise.all([songQuery.refetch(), retryPlaylists()]);
+    await Promise.all([
+      songCovers.error.value && songCovers.refetch(),
+      playlistCovers.error.value && playlistCovers.refetch(),
+    ]);
+  },
+  undefined,
+  { immediate: false },
+);
+const isComposing = ref(false);
+const searching = computed(() => Boolean(term.value) && loading.value);
+const { start: scheduleSearch, stop: cancelSearch } = useTimeoutFn(library.submitSearch, 300, {
+  immediate: false,
+});
+
+watch([() => search.value.trim(), isComposing], ([keyword, composing]) => {
+  cancelSearch();
+  if (composing || keyword === term.value) {
+    return;
   }
-  if (playlistCovers.error.value) {
-    void playlistCovers.refetch();
+  if (keyword) {
+    scheduleSearch();
+  } else {
+    library.submitSearch();
   }
-}
+});
 
 function play(song: Song) {
   return playFromLibrary(song, song.coverId ? (coverUrls.value[song.coverId] ?? null) : null);
 }
 
-function playFirst() {
+async function playFirst() {
   const song = firstPlayable.value;
   if (song) {
-    void play(song);
+    await play(song);
   }
 }
 </script>
@@ -94,21 +114,24 @@ function playFirst() {
       aria-label="歌曲列表"
     >
       <div class="flex items-center gap-2 px-4 pb-3 pt-2 sm:gap-3 sm:px-6 md:pt-4">
-        <form role="search" class="flex min-w-0 flex-1" @submit.prevent="library.submitSearch()">
+        <form role="search" class="flex min-w-0 flex-1" :aria-busy="searching" @submit.prevent>
           <div class="input min-w-0 w-full rounded-full border-transparent bg-base-200">
-            <button
-              type="submit"
-              class="btn btn-ghost btn-circle btn-xs -ml-1 text-base-content/70"
-              aria-label="搜索"
+            <span
+              class="-ml-1 grid size-6 shrink-0 place-items-center text-base-content/70"
+              aria-hidden="true"
             >
-              <Search class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
-            </button>
+              <span v-if="searching" class="loading loading-spinner loading-xs" />
+              <Search v-else class="size-4" :stroke-width="1.8" />
+            </span>
             <input
               v-model="search"
               type="search"
               class="min-w-0"
               aria-label="搜索歌曲"
               placeholder="搜索歌曲、歌手或专辑"
+              @compositionstart="isComposing = true"
+              @compositionend="isComposing = false"
+              @change="isComposing = false"
             />
           </div>
         </form>
@@ -137,22 +160,24 @@ function playFirst() {
               {{ songs.length }}{{ hasNextPage ? "+" : "" }} 首歌曲
             </p>
           </div>
-          <button
+          <AsyncButton
             v-if="firstPlayable"
             type="button"
             class="btn btn-primary btn-circle shrink-0 sm:btn-lg"
             aria-label="播放歌单"
-            @click="playFirst"
+            :action="playFirst"
           >
-            <Play
-              class="size-4 shrink-0"
-              :stroke-width="1.8"
-              aria-hidden="true"
-              fill="currentColor"
-            />
-          </button>
+            <template #icon>
+              <Play
+                class="size-4 shrink-0"
+                :stroke-width="1.8"
+                aria-hidden="true"
+                fill="currentColor"
+              />
+            </template>
+          </AsyncButton>
         </div>
-        <div v-if="loading && !songs.length" role="status" class="mt-4 lg:pt-6">
+        <div v-if="loading && !songs.length && !retrying" role="status" class="mt-4 lg:pt-6">
           <span class="sr-only">加载歌曲…</span>
           <div aria-hidden="true">
             <div v-for="row in 6" :key="row" class="flex items-center gap-3 py-2 pr-4 pl-2 lg:pl-3">
@@ -170,8 +195,12 @@ function playFirst() {
             </div>
           </div>
         </div>
-        <div v-else-if="error" class="alert alert-error alert-soft mt-4" role="alert">
-          {{ error }} <button class="btn btn-sm" @click="retryLibrary">重试</button>
+        <div v-else-if="error || retrying" class="alert alert-error alert-soft mt-4" role="alert">
+          {{ error }}
+          <button class="btn btn-sm" :disabled="retrying" :aria-busy="retrying" @click="retryLibrary()">
+            <span v-if="retrying" class="loading loading-spinner loading-xs" aria-hidden="true" />
+            重试
+          </button>
         </div>
         <div
           v-else-if="!songs.length"
@@ -209,6 +238,7 @@ function playFirst() {
               <button
                 class="group relative flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-field py-2 pr-1 pl-2 text-left lg:pr-3 lg:pl-3"
                 :aria-label="`播放 ${song.title}`"
+                :aria-busy="playbackLoading && current?.id === song.id"
                 :aria-current="current?.id === song.id ? 'true' : undefined"
                 :disabled="app.offline && !offlineAudio?.has(song.id)"
                 :aria-description="
@@ -233,9 +263,9 @@ function playFirst() {
                   "
                   aria-hidden="true"
                 >
-                  <LoaderCircle
+                  <span
                     v-if="playbackLoading && current?.id === song.id"
-                    class="size-4 animate-spin text-neutral-content sm:text-primary"
+                    class="loading loading-spinner loading-xs text-neutral-content sm:text-primary"
                   />
                   <PlayingBars
                     v-else-if="playing && current?.id === song.id"
@@ -285,14 +315,14 @@ function playFirst() {
               </button>
             </li>
           </ul>
-          <button
+          <AsyncButton
             v-if="hasNextPage"
             class="btn btn-ghost btn-sm mt-3"
             :disabled="loading"
-            @click="loadNextPage()"
+            :action="() => loadNextPage()"
           >
             加载更多
-          </button>
+          </AsyncButton>
         </div>
       </div>
     </section>

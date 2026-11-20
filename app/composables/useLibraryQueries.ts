@@ -31,7 +31,7 @@ export function useLibraryQueries() {
     const scope = session.offlineScope;
     const offline = app.offline;
     return {
-      key: connectionKey([...libraryKeys.songs(session.userId), "pages", filters], offline),
+      key: connectionKey(libraryKeys.songPages(session.userId, filters), offline),
       enabled: enabled(),
       // Retry the failed page request instead of refetching the loaded pages.
       retry: 0,
@@ -214,6 +214,15 @@ export function useSongDetailsState() {
   const library = useLibraryStore();
   return useQueryState<SongDetails>(() =>
     connectionKey(libraryKeys.song(session.userId, library.songId ?? ""), app.offline),
+  );
+}
+
+export function useSongListState() {
+  const session = useSessionStore();
+  const library = useLibraryStore();
+  const app = useAppStore();
+  return useQueryState(() =>
+    connectionKey(libraryKeys.songPages(session.userId, library.filters), app.offline),
   );
 }
 

@@ -1,15 +1,24 @@
 <script setup lang="ts">
+import { useAppStore } from "~/stores/app";
+import { useSessionStore } from "~/stores/session";
 import { showMusicDialog } from "~/utils/music-dialog";
 import { useId, useTemplateRef } from "vue";
 defineOptions({ name: "LogoutConfirmDialog" });
 
-const emit = defineEmits<{ confirm: [] }>();
+const props = defineProps<{ releasePlayer?: () => Promise<void> | undefined }>();
+const session = useSessionStore();
+const app = useAppStore();
 const dialog = useTemplateRef<HTMLDialogElement>("dialog");
 const titleId = useId();
 
-function confirmLogout() {
-  dialog.value?.close();
-  emit("confirm");
+async function confirmLogout() {
+  if (session.signingOut || app.offline) {
+    return;
+  }
+  await session.logout(props.releasePlayer);
+  if (!session.logoutError) {
+    dialog.value?.close();
+  }
 }
 
 defineExpose({
@@ -18,18 +27,35 @@ defineExpose({
 </script>
 
 <template>
-  <dialog ref="dialog" class="modal modal-bottom sm:modal-middle" :aria-labelledby="titleId">
+  <dialog
+    ref="dialog"
+    class="modal modal-bottom sm:modal-middle"
+    :aria-labelledby="titleId"
+    @cancel="session.signingOut && $event.preventDefault()"
+  >
     <div class="modal-box max-w-sm">
       <h2 :id="titleId" class="text-lg font-semibold">确定退出登录？</h2>
+      <p v-if="session.logoutError" class="alert alert-error mt-3" role="alert">
+        {{ session.logoutError }}
+      </p>
       <div class="modal-action">
         <form method="dialog">
-          <button class="btn">取消</button>
+          <button class="btn" :disabled="session.signingOut">取消</button>
         </form>
-        <button type="button" class="btn btn-error" @click="confirmLogout">退出登录</button>
+        <button
+          type="button"
+          class="btn btn-error"
+          :disabled="session.signingOut || app.offline"
+          :aria-busy="session.signingOut"
+          @click="confirmLogout"
+        >
+          <span v-if="session.signingOut" class="loading loading-spinner loading-xs" aria-hidden="true" />
+          退出登录
+        </button>
       </div>
     </div>
     <form method="dialog" class="modal-backdrop">
-      <button>取消退出登录</button>
+      <button tabindex="-1" :disabled="session.signingOut">取消退出登录</button>
     </form>
   </dialog>
 </template>

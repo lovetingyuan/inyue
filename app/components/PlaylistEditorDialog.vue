@@ -27,7 +27,9 @@ const hasPlaylistCover = computed(() =>
 );
 const playlistSave = usePlaylistSave();
 const libraryDelete = useLibraryDelete();
-const pending = computed(() => playlistSave.isLoading.value || libraryDelete.isLoading.value);
+const saving = playlistSave.isLoading;
+const deleting = libraryDelete.isLoading;
+const pending = computed(() => saving.value || deleting.value);
 const dialogError = ref("");
 const playlistErrors = reactive({ name: "", cover: "" });
 const playlistFieldId = useId();
@@ -208,7 +210,13 @@ defineExpose({ open });
           <button type="button" class="btn" :disabled="pending" @click="dialog?.close()">
             取消
           </button>
-          <button type="submit" class="btn btn-primary" :disabled="pending || app.offline">
+          <button
+            type="submit"
+            class="btn btn-primary"
+            :disabled="pending || app.offline"
+            :aria-busy="saving"
+          >
+            <span v-if="saving" class="loading loading-spinner loading-xs" aria-hidden="true" />
             保存
           </button>
         </div>
@@ -225,8 +233,10 @@ defineExpose({ open });
             type="button"
             class="btn btn-error"
             :disabled="pending || app.offline"
+            :aria-busy="deleting"
             @click="removePlaylist"
           >
+            <span v-if="deleting" class="loading loading-spinner loading-xs" aria-hidden="true" />
             确认删除
           </button>
         </div>

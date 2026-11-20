@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AsyncButton from "~/components/AsyncButton.vue";
+import { usePlayerStore } from "~/stores/player";
 import { showMusicDialog } from "~/utils/music-dialog";
 import { useCoverQuery } from "~/composables/useLibraryQueries";
 import PlayingBars from "~/components/PlayingBars.vue";
@@ -14,13 +16,27 @@ const props = defineProps<{
   currentTrackId?: string;
   playing: boolean;
 }>();
-const emit = defineEmits<{ play: [trackId: string] }>();
+const player = usePlayerStore();
+const selecting = ref(false);
 
 const dialog = useTemplateRef("dialog");
 const open = ref(false);
 const { urls: covers } = useCoverQuery(() =>
   open.value ? props.queue.flatMap(({ coverId }) => (coverId ? [coverId] : [])) : [],
 );
+
+async function play(trackId: string) {
+  if (selecting.value) {
+    return;
+  }
+  selecting.value = true;
+  try {
+    await player.playQueuedTrack(trackId);
+    dialog.value?.close();
+  } finally {
+    selecting.value = false;
+  }
+}
 
 defineExpose({
   open: () => {
@@ -37,6 +53,7 @@ defineExpose({
     class="modal modal-bottom sm:modal-middle"
     aria-labelledby="queue-title"
     data-playback-shortcuts
+    @cancel="selecting && $event.preventDefault()"
     @close="open = false"
   >
     <div
@@ -53,19 +70,19 @@ defineExpose({
           <span class="text-sm font-medium text-base-content/65">{{ queue.length }} 首</span>
         </h2>
         <form method="dialog">
-          <button class="btn btn-ghost btn-circle btn-sm" aria-label="关闭播放队列">
+          <button class="btn btn-ghost btn-circle btn-sm" aria-label="关闭播放队列" :disabled="selecting">
             <X class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
           </button>
         </form>
       </div>
       <ol class="grid content-start overflow-y-auto">
         <li v-for="item in queue" :key="item.id" class="min-w-0">
-          <button
-            type="button"
+          <AsyncButton
             class="btn btn-ghost flex h-auto w-full gap-3 p-2 text-left focus-visible:-outline-offset-2"
+            :disabled="selecting"
             :aria-current="item.id === currentTrackId ? 'true' : undefined"
             :class="{ 'bg-primary/10': item.id === currentTrackId }"
-            @click="emit('play', item.id)"
+            :action="() => play(item.id)"
           >
             <MusicArtwork :src="item.coverId ? covers[item.coverId] : item.coverUrl" class="w-9" />
             <span class="min-w-0 flex-1">
@@ -78,12 +95,12 @@ defineExpose({
               v-if="playing && item.id === currentTrackId"
               class="size-4 shrink-0 text-primary mr-1"
             />
-          </button>
+          </AsyncButton>
         </li>
       </ol>
     </div>
     <form method="dialog" class="modal-backdrop">
-      <button aria-label="关闭播放队列">关闭</button>
+      <button aria-label="关闭播放队列" :disabled="selecting">关闭</button>
     </form>
   </dialog>
 </template>

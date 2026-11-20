@@ -279,9 +279,11 @@ defineExpose({
             type="button"
             class="btn btn-ghost"
             :disabled="sharing || session.signingOut"
+            :aria-busy="sharing"
             @click="shareApp"
           >
-            <Share2 class="size-4" aria-hidden="true" />
+            <span v-if="sharing" class="loading loading-spinner loading-xs" aria-hidden="true" />
+            <Share2 v-else class="size-4" aria-hidden="true" />
             分享 {{ appName }}
           </button>
           <button type="submit" class="btn btn-ghost" :disabled="session.signingOut">关闭</button>
@@ -301,5 +303,5 @@ defineExpose({
     </form>
   </dialog>
   <AccountProfileDialog :key="account.id" ref="profileEditor" />
-  <LogoutConfirmDialog ref="logoutConfirm" @confirm="session.logout()" />
+  <LogoutConfirmDialog ref="logoutConfirm" />
 </template>

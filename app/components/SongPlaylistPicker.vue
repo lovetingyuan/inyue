@@ -161,6 +161,7 @@ defineExpose({ open });
             type="submit"
             class="btn btn-primary min-w-18"
             :disabled="saving || !changes.length || app.offline"
+            :aria-busy="saving"
           >
             <span v-if="saving" class="loading loading-spinner loading-xs" aria-hidden="true" />
             {{ saving ? "保存中…" : "保存" }}

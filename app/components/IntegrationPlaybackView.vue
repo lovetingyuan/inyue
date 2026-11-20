@@ -11,8 +11,8 @@ const session = useSessionStore();
 const player = useTemplateRef("player");
 const logoutConfirm = useTemplateRef<LogoutConfirmDialogExpose>("logoutConfirm");
 
-function confirmLogout() {
-  void session.logout(() => player.value?.release());
+function releasePlayer() {
+  return player.value?.release();
 }
 </script>
 
@@ -36,6 +36,6 @@ function confirmLogout() {
     <p v-if="session.logoutError" class="alert alert-error" role="alert">
       {{ session.logoutError }}
     </p>
-    <LogoutConfirmDialog ref="logoutConfirm" @confirm="confirmLogout" />
+    <LogoutConfirmDialog ref="logoutConfirm" :release-player="releasePlayer" />
   </template>
 </template>
