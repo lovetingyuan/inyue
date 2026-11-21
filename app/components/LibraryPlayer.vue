@@ -14,6 +14,7 @@ import {
   Pause,
   Play,
   Repeat,
+  Repeat1,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -42,6 +43,7 @@ const queueDialog = useTemplateRef("queueDialog");
 const playbackModes = {
   sequential: { label: "顺序播放", icon: ListOrdered },
   loop: { label: "列表循环", icon: Repeat },
+  single: { label: "单曲循环", icon: Repeat1 },
   shuffle: { label: "随机播放", icon: Shuffle },
 };
 const playbackMode = computed(() => playbackModes[mode.value]);
@@ -140,8 +142,10 @@ async function cycleMode() {
   const previousMode = mode.value;
   let nextMode: PlaybackMode = "sequential";
   if (previousMode === "sequential") {
-    nextMode = queue.value.length > 1 ? "loop" : "shuffle";
+    nextMode = queue.value.length > 1 ? "loop" : "single";
   } else if (previousMode === "loop") {
+    nextMode = "single";
+  } else if (previousMode === "single") {
     nextMode = "shuffle";
   }
 

@@ -23,7 +23,7 @@
     "lint": "oxlint --deny-warnings .",
     "lint:fix": "oxlint --fix --deny-warnings .",
     "preview": "npm run build && wrangler dev --config .output/server/wrangler.json",
-    "postinstall": "nuxt prepare",
+    "postinstall": "patch-package && nuxt prepare",
     "deploy": "node scripts/deploy.mjs",
     "cf-typegen": "wrangler types --include-main-module=false",
     "format": "oxfmt --write ."
@@ -73,6 +73,7 @@
     "nitro-cloudflare-dev": "^0.2.2",
     "oxfmt": "^0.78.0",
     "oxlint": "^1.93.0",
+    "patch-package": "^8.0.1",
     "typescript": "~6.0.3",
     "vite-plugin-dom-source": "^1.0.2",
     "vue-tsc": "^3.3.14",

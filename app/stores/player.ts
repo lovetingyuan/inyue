@@ -4,7 +4,7 @@ import { useMusicApi } from "~/composables/useMusicApi";
 import { releaseCoverObjectUrl, retainCoverObjectUrl } from "~/utils/cover-object-urls";
 import { computed, ref, shallowRef, watch } from "vue";
 import type { PluginListenerHandle } from "@capacitor/core";
-import type { PlaylistPlugin } from "@dwbn/capacitor-plugin-playlist";
+import type { PlaylistPlugin, RepeatMode } from "@dwbn/capacitor-plugin-playlist";
 import { useDocumentVisibility, useEventListener, useIntervalFn, useThrottleFn } from "@vueuse/core";
 import { defineStore } from "pinia";
 import type {
@@ -440,7 +440,7 @@ export const usePlayerStore = defineStore("player", () => {
     };
     audio.onended = () => {
       if (!pendingTrack.value) {
-        void run(() => step(1));
+        void run(() => step(1, true));
       }
     };
     audio.onerror = playbackError;
@@ -485,6 +485,19 @@ export const usePlayerStore = defineStore("player", () => {
     });
   }
 
+  function nativeRepeatMode(
+    playbackMode: PlaybackMode = mode.value,
+    count = order.value.length,
+  ): RepeatMode {
+    if (playbackMode === "single") {
+      return "one";
+    }
+    if (playbackMode === "loop" && count > 1) {
+      return "all";
+    }
+    return "off";
+  }
+
   async function load(selected: string, time: number, autoplay: boolean, signal?: AbortSignal) {
     const track = tracks.value.find(({ id }) => id === selected);
     if (!track) {
@@ -524,7 +537,7 @@ export const usePlayerStore = defineStore("player", () => {
         if (owner !== requestedOwner || signal?.aborted || !output) {
           return;
         }
-        await output.setLoop({ loop: mode.value === "loop" && order.value.length > 1 });
+        await output.setRepeatMode({ mode: nativeRepeatMode() });
         await output.setPlaylistItems({
           items: queue.value.map(nativeItem),
           options: { startPaused: true, playFromId: selected },
@@ -586,6 +599,7 @@ export const usePlayerStore = defineStore("player", () => {
         audioUrl = URL.createObjectURL(local);
       }
       output.src = audioUrl ?? source;
+      output.loop = mode.value === "single";
       output.volume = volume.value;
       output.currentTime = time;
       if (autoplay) {
@@ -819,7 +833,7 @@ export const usePlayerStore = defineStore("player", () => {
       typeof snapshot.id !== "string" ||
       !Number.isFinite(snapshot.position) ||
       !Number.isFinite(snapshot.volume) ||
-      !["loop", "shuffle", "sequential"].includes(snapshot.mode) ||
+      !["loop", "single", "shuffle", "sequential"].includes(snapshot.mode) ||
       (snapshot.queueKey !== undefined && typeof snapshot.queueKey !== "string")
     ) {
       return;
@@ -847,7 +861,7 @@ export const usePlayerStore = defineStore("player", () => {
     }
   }
 
-  async function step(direction: number) {
+  async function step(direction: number, ended = false) {
     if (player) {
       if (direction === 1) {
         await player.skipForward();
@@ -871,7 +885,7 @@ export const usePlayerStore = defineStore("player", () => {
     const next = following.find((trackId) => !available || available.has(trackId));
     if (next) {
       await load(next, 0, true);
-    } else if (direction > 0) {
+    } else if (ended && direction > 0) {
       audio?.pause();
       playing.value = false;
     }
@@ -942,7 +956,10 @@ export const usePlayerStore = defineStore("player", () => {
         nativeOrder.splice(from, 1);
         nativeOrder.splice(index, 0, trackId);
       }
-      await player.setLoop({ loop: nextMode === "loop" });
+      await player.setRepeatMode({ mode: nativeRepeatMode(nextMode, nextOrder.length) });
+    }
+    if (audio) {
+      audio.loop = nextMode === "single";
     }
     mode.value = nextMode;
     order.value = nextOrder;
@@ -966,6 +983,7 @@ export const usePlayerStore = defineStore("player", () => {
       await player.clearAllItems();
     }
     if (audio) {
+      audio.loop = false;
       audio.pause();
       audio.removeAttribute("src");
       audio.load();
@@ -1027,6 +1045,7 @@ export const usePlayerStore = defineStore("player", () => {
       audio.ontimeupdate = audio.onplay = audio.onpause = audio.onended = audio.onerror = null;
       audio.onloadstart = audio.onwaiting = audio.oncanplay = audio.onplaying = null;
       audio.onemptied = audio.onabort = null;
+      audio.loop = false;
       audio.pause();
       audio.removeAttribute("src");
       audio.load();

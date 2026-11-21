@@ -1,0 +1,221 @@
+diff --git a/node_modules/@dwbn/capacitor-plugin-playlist/android/src/main/java/org/dwbn/plugins/playlist/PlaylistPlugin.kt b/node_modules/@dwbn/capacitor-plugin-playlist/android/src/main/java/org/dwbn/plugins/playlist/PlaylistPlugin.kt
+index d80e4aa..69bda22 100644
+--- a/node_modules/@dwbn/capacitor-plugin-playlist/android/src/main/java/org/dwbn/plugins/playlist/PlaylistPlugin.kt
++++ b/node_modules/@dwbn/capacitor-plugin-playlist/android/src/main/java/org/dwbn/plugins/playlist/PlaylistPlugin.kt
+@@ -165,6 +165,20 @@ public class PlaylistPlugin : Plugin(), OnStatusReportListener {
+         }
+     }
+ 
++    @PluginMethod
++    fun setRepeatMode(call: PluginCall) {
++        val mode = PlaylistPlaybackPolicy.parseRepeatMode(call.getString("mode"))
++        if (mode == null) {
++            call.reject("Invalid repeat mode", "invalidArgument")
++            return
++        }
++        Handler(Looper.getMainLooper()).post {
++            audioPlayerImpl!!.playlistManager.repeatMode = mode
++            call.resolve()
++            Log.i(TAG, "setRepeatMode: $mode")
++        }
++    }
++
+     @PluginMethod
+     fun setPlaylistItems(call: PluginCall) {
+         val items: JSArray = call.getArray("items")
+diff --git a/node_modules/@dwbn/capacitor-plugin-playlist/android/src/main/java/org/dwbn/plugins/playlist/manager/PlaylistManager.kt b/node_modules/@dwbn/capacitor-plugin-playlist/android/src/main/java/org/dwbn/plugins/playlist/manager/PlaylistManager.kt
+index 500feb9..973ca64 100644
+--- a/node_modules/@dwbn/capacitor-plugin-playlist/android/src/main/java/org/dwbn/plugins/playlist/manager/PlaylistManager.kt
++++ b/node_modules/@dwbn/capacitor-plugin-playlist/android/src/main/java/org/dwbn/plugins/playlist/manager/PlaylistManager.kt
+@@ -40,10 +40,20 @@ class PlaylistManager(private val application: Application) {
+     private var volumeLeft = 1.0f
+     private var volumeRight = 1.0f
+     private var playbackSpeed = 1.0f
+-    var loop = false
++    var repeatMode: String = PlaylistPlaybackPolicy.REPEAT_MODE_OFF
+         set(value) {
+-            field = value
++            field = PlaylistPlaybackPolicy.parseRepeatMode(value) ?: PlaylistPlaybackPolicy.REPEAT_MODE_OFF
+             applyPlayerSettings()
++            mediaServiceRef.get()?.refreshSkipAvailability()
++        }
++    var loop: Boolean
++        get() = repeatMode == PlaylistPlaybackPolicy.REPEAT_MODE_ALL
++        set(value) {
++            repeatMode = if (value) {
++                PlaylistPlaybackPolicy.REPEAT_MODE_ALL
++            } else {
++                PlaylistPlaybackPolicy.REPEAT_MODE_OFF
++            }
+         }
+     var isShouldStopPlaylist = false
+     var currentErrorTrack: AudioTrack? = null
+@@ -595,7 +605,7 @@ class PlaylistManager(private val application: Application) {
+             if (blockIfOfflineExpired(audioTracks[index])) {
+                 return
+             }
+-            exoPlayer.repeatMode = PlaylistPlaybackPolicy.repeatMode(loop, audioTracks.size)
++            exoPlayer.repeatMode = PlaylistPlaybackPolicy.repeatMode(repeatMode, audioTracks.size)
+             exoPlayer.seekTo(index, seekPosition)
+             exoPlayer.prepare()
+             exoPlayer.playWhenReady = !startPaused && !videoHandoffForegroundRetain
+@@ -641,7 +651,7 @@ class PlaylistManager(private val application: Application) {
+         player?.let { exoPlayer ->
+             exoPlayer.volume = (volumeLeft + volumeRight) / 2f
+             exoPlayer.setPlaybackSpeed(playbackSpeed)
+-            exoPlayer.repeatMode = PlaylistPlaybackPolicy.repeatMode(loop, audioTracks.size)
++            exoPlayer.repeatMode = PlaylistPlaybackPolicy.repeatMode(repeatMode, audioTracks.size)
+         }
+     }
+ 
+@@ -692,7 +702,7 @@ class PlaylistManager(private val application: Application) {
+             if (PlaylistPlaybackPolicy.isNaturalItemEnd(reason) && previousIndex in audioTracks.indices) {
+                 notifyItemCompleted(
+                     audioTracks[previousIndex],
+-                    PlaylistPlaybackPolicy.nextAvailable(previousIndex, audioTracks.size, loop)
++                    PlaylistPlaybackPolicy.hasFollowingAfterNaturalEnd(previousIndex, audioTracks.size, repeatMode)
+                 )
+             }
+             playbackStatusListener.get()?.onNativeTrackChanged(
+diff --git a/node_modules/@dwbn/capacitor-plugin-playlist/android/src/main/java/org/dwbn/plugins/playlist/manager/PlaylistPlaybackPolicy.kt b/node_modules/@dwbn/capacitor-plugin-playlist/android/src/main/java/org/dwbn/plugins/playlist/manager/PlaylistPlaybackPolicy.kt
+index 38af3b3..7a3ef60 100644
+--- a/node_modules/@dwbn/capacitor-plugin-playlist/android/src/main/java/org/dwbn/plugins/playlist/manager/PlaylistPlaybackPolicy.kt
++++ b/node_modules/@dwbn/capacitor-plugin-playlist/android/src/main/java/org/dwbn/plugins/playlist/manager/PlaylistPlaybackPolicy.kt
+@@ -26,13 +26,35 @@ object PlaylistPlaybackPolicy {
+     fun hasStalled(msSinceLastProgress: Long, thresholdMs: Long = STALL_THRESHOLD_MS): Boolean =
+         msSinceLastProgress >= thresholdMs
+ 
++    const val REPEAT_MODE_OFF = "off"
++    const val REPEAT_MODE_ONE = "one"
++    const val REPEAT_MODE_ALL = "all"
++
++    @JvmStatic
++    fun parseRepeatMode(mode: String?): String? = when (mode) {
++        REPEAT_MODE_OFF, REPEAT_MODE_ONE, REPEAT_MODE_ALL -> mode
++        else -> null
++    }
++
+     /**
+      * PlaylistCore never repeated a single item: with one item `next` was unavailable even when
+      * looping, so playback stopped at its end. Media3 `REPEAT_MODE_ALL` would restart it forever.
++     * Explicit `REPEAT_MODE_ONE` always repeats the current item, including a single-track queue.
+      */
++    @JvmStatic
++    fun repeatMode(mode: String, itemCount: Int): Int = when (mode) {
++        REPEAT_MODE_ONE -> Player.REPEAT_MODE_ONE
++        REPEAT_MODE_ALL -> if (itemCount > 1) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
++        else -> Player.REPEAT_MODE_OFF
++    }
++
+     @JvmStatic
+     fun repeatMode(loop: Boolean, itemCount: Int): Int =
+-        if (loop && itemCount > 1) Player.REPEAT_MODE_ALL else Player.REPEAT_MODE_OFF
++        repeatMode(if (loop) REPEAT_MODE_ALL else REPEAT_MODE_OFF, itemCount)
++
++    @JvmStatic
++    fun hasFollowingAfterNaturalEnd(index: Int, itemCount: Int, repeatMode: String): Boolean =
++        repeatMode == REPEAT_MODE_ONE || nextAvailable(index, itemCount, repeatMode == REPEAT_MODE_ALL)
+ 
+     @JvmStatic
+     fun nextAvailable(index: Int, itemCount: Int, loop: Boolean): Boolean {
+diff --git a/node_modules/@dwbn/capacitor-plugin-playlist/dist/esm/definitions.d.ts b/node_modules/@dwbn/capacitor-plugin-playlist/dist/esm/definitions.d.ts
+index ae15c9c..a1fde31 100644
+--- a/node_modules/@dwbn/capacitor-plugin-playlist/dist/esm/definitions.d.ts
++++ b/node_modules/@dwbn/capacitor-plugin-playlist/dist/esm/definitions.d.ts
+@@ -135,6 +135,10 @@ export interface PlaylistPlugin {
+      * When true, the playlist loops back to the first track after the last track completes.
+      */
+     setLoop(options: SetLoopOptions): Promise<void>;
++    /**
++     * Set repeat mode: `'off'` disables repeat, `'one'` repeats the current track, and `'all'` repeats the playlist.
++     */
++    setRepeatMode(options: SetRepeatModeOptions): Promise<void>;
+     /**
+      * Set playback speed. Float value; 0 pauses, 1 is normal speed.
+      */
+@@ -287,6 +291,10 @@ export interface SetPlaybackVolumeOptions {
+ export interface SetLoopOptions {
+     loop: boolean;
+ }
++export type RepeatMode = 'off' | 'one' | 'all';
++export interface SetRepeatModeOptions {
++    mode: RepeatMode;
++}
+ export interface SetPlaybackRateOptions {
+     rate: number;
+ }
+diff --git a/node_modules/@dwbn/capacitor-plugin-playlist/dist/esm/web.d.ts b/node_modules/@dwbn/capacitor-plugin-playlist/dist/esm/web.d.ts
+index aef7b62..4b906eb 100644
+--- a/node_modules/@dwbn/capacitor-plugin-playlist/dist/esm/web.d.ts
++++ b/node_modules/@dwbn/capacitor-plugin-playlist/dist/esm/web.d.ts
+@@ -1,11 +1,12 @@
+ import { WebPlugin } from '@capacitor/core';
+ import { RmxAudioStatusMessage } from './Constants';
+-import type { AddAllItemOptions, AddItemOptions, MoveItemOptions, PlayByIdOptions, PlayByIndexOptions, PlaylistOptions, PlaylistPlugin, RemoveItemOptions, RemoveItemsOptions, ReplaceItemOptions, SeekToOptions, SelectByIdOptions, SelectByIndexOptions, SetLoopOptions, SetPlaybackRateOptions, SetPlaybackVolumeOptions } from './definitions';
++import type { AddAllItemOptions, AddItemOptions, MoveItemOptions, PlayByIdOptions, PlayByIndexOptions, PlaylistOptions, PlaylistPlugin, RemoveItemOptions, RemoveItemsOptions, RepeatMode, ReplaceItemOptions, SeekToOptions, SelectByIdOptions, SelectByIndexOptions, SetLoopOptions, SetPlaybackRateOptions, SetPlaybackVolumeOptions, SetRepeatModeOptions } from './definitions';
+ import type { AudioPlayerOptions, AudioTrack, DownloadIdOptions, DownloadInfo, RenewDownloadOptions, StartDownloadOptions } from './interfaces';
+ export declare class PlaylistWeb extends WebPlugin implements PlaylistPlugin {
+     protected audio: HTMLAudioElement | undefined;
+     protected playlistItems: AudioTrack[];
+     protected loop: boolean;
++    protected repeatMode: RepeatMode;
+     protected options: AudioPlayerOptions;
+     protected currentTrack: AudioTrack | null;
+     protected lastState: string;
+@@ -36,6 +37,7 @@ export declare class PlaylistWeb extends WebPlugin implements PlaylistPlugin {
+     selectTrackById(options: SelectByIdOptions): Promise<void>;
+     selectTrackByIndex(options: SelectByIndexOptions): Promise<void>;
+     setLoop(options: SetLoopOptions): Promise<void>;
++    setRepeatMode(options: SetRepeatModeOptions): Promise<void>;
+     setOptions(options: AudioPlayerOptions): Promise<void>;
+     setPlaybackVolume(options: SetPlaybackVolumeOptions): Promise<void>;
+     startDownload(_options: StartDownloadOptions): Promise<{
+diff --git a/node_modules/@dwbn/capacitor-plugin-playlist/dist/esm/web.js b/node_modules/@dwbn/capacitor-plugin-playlist/dist/esm/web.js
+index ccb70ee..c2ac605 100644
+--- a/node_modules/@dwbn/capacitor-plugin-playlist/dist/esm/web.js
++++ b/node_modules/@dwbn/capacitor-plugin-playlist/dist/esm/web.js
+@@ -39,6 +39,7 @@ export class PlaylistWeb extends WebPlugin {
+         super(...arguments);
+         this.playlistItems = [];
+         this.loop = false;
++        this.repeatMode = 'off';
+         this.options = {};
+         this.currentTrack = null;
+         this.lastState = 'stopped';
+@@ -231,6 +232,15 @@ export class PlaylistWeb extends WebPlugin {
+     }
+     setLoop(options) {
+         this.loop = options.loop;
++        this.repeatMode = options.loop ? 'all' : 'off';
++        return Promise.resolve();
++    }
++    setRepeatMode(options) {
++        if (options.mode !== 'off' && options.mode !== 'one' && options.mode !== 'all') {
++            return Promise.reject(new Error('Invalid repeat mode'));
++        }
++        this.repeatMode = options.mode;
++        this.loop = options.mode === 'all';
+         return Promise.resolve();
+     }
+     setOptions(options) {
+@@ -447,9 +457,19 @@ export class PlaylistWeb extends WebPlugin {
+             this.audio.addEventListener('ended', () => {
+                 this.clearStalled();
+                 this.updateStatus(RmxAudioStatusMessage.RMXSTATUS_COMPLETED, this.getCurrentTrackStatus('stopped'));
++                if (this.repeatMode === 'one' && this.audio) {
++                    this.audio.currentTime = 0;
++                    void this.audio.play();
++                    return;
++                }
+                 const currentTrackIndex = this.playlistItems.findIndex(i => i.trackId === this.getCurrentTrackId());
+                 if (currentTrackIndex === this.playlistItems.length - 1) {
+-                    this.updateStatus(RmxAudioStatusMessage.RMXSTATUS_PLAYLIST_COMPLETED, this.getCurrentTrackStatus('stopped'));
++                    if (this.repeatMode === 'all' && this.playlistItems.length > 1) {
++                        this.setCurrent(this.playlistItems[0], undefined, true);
++                    }
++                    else {
++                        this.updateStatus(RmxAudioStatusMessage.RMXSTATUS_PLAYLIST_COMPLETED, this.getCurrentTrackStatus('stopped'));
++                    }
+                 }
+                 else {
+                     this.setCurrent(this.playlistItems[currentTrackIndex + 1], undefined, true);

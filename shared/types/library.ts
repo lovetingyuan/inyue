@@ -60,7 +60,7 @@ export interface MediaAuthorization {
   covers: Record<string, string>;
 }
 
-export type PlaybackMode = "sequential" | "loop" | "shuffle";
+export type PlaybackMode = "sequential" | "loop" | "single" | "shuffle";
 
 export interface PlaybackSnapshot {
   ids: string[];

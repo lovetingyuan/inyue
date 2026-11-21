@@ -6,6 +6,7 @@ import type { PlaylistPlugin, AudioTrack } from "@dwbn/capacitor-plugin-playlist
 import type { PluginListenerHandle } from "@capacitor/core";
 import { useQuery } from "@pinia/colada";
 import { libraryKeys } from "~/utils/music-query-keys";
+import type { PlaybackMode } from "~~/shared/types/library";
 
 const { native, request } = useMusicApi();
 const session = useSessionStore();
@@ -17,7 +18,7 @@ const tracks = useQuery({
     (await request<{ id: string; url: string }[]>("/api/integration/tracks", { retry: 1, signal }))
       ._data,
 });
-const mode = ref<"sequential" | "loop" | "shuffle">("sequential");
+const mode = ref<PlaybackMode>("sequential");
 const track = ref("");
 const position = ref(0);
 const status = ref("");
@@ -68,7 +69,9 @@ async function load() {
       items[2] = second;
     }
   }
-  await player.setLoop({ loop: mode.value === "loop" });
+  await player.setRepeatMode({
+    mode: mode.value === "single" ? "one" : mode.value === "loop" ? "all" : "off",
+  });
   await player.setPlaylistItems({ items, options: { startPaused: true } });
   status.value = `队列 ${items.map((item) => item.trackId).join(" → ")}`;
   await player.play();
@@ -125,6 +128,7 @@ defineExpose({ release });
       <select v-model="mode" class="select w-full" :disabled="busy">
         <option value="sequential">顺序播放</option>
         <option value="loop">列表循环</option>
+        <option value="single">单曲循环</option>
         <option value="shuffle">随机播放</option>
       </select>
     </label>
