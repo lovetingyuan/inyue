@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, getRouterParam } from "h3";
-import { requireUserSession } from "#better-auth-session";
+import { requireAccountSession } from "~~/server/utils/account-session";
 import { playlists } from "../../database/library-schema";
 import { libraryDatabase } from "../../utils/library";
 import { cleanupUserFiles, withLibraryFiles } from "../../utils/library-files";
@@ -12,7 +12,7 @@ import {
 import { coverUpload, formText, uploadForm } from "../../utils/library-upload";
 
 export default defineEventHandler(async (event) => {
-  const { user } = await requireUserSession(event, { user: { emailVerified: true } });
+  const { user } = await requireAccountSession(event, { user: { emailVerified: true } });
   const db = libraryDatabase(event);
   const id = getRouterParam(event, "id") ?? "";
   await ownedPlaylist(db, user.id, id);

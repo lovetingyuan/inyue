@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, setResponseHeader } from "h3";
-import { requireUserSession } from "#better-auth-session";
+import { requireAccountSession } from "~~/server/utils/account-session";
 import { userProfiles } from "../database/profile-schema";
 import { accountProfile, isAvatarJpeg } from "../utils/account-profile";
 import { libraryDatabase } from "../utils/library";
@@ -10,7 +10,7 @@ import { offlineExpiryHeader } from "~~/shared/offline-library";
 const profileFields = new Set(["accountId", "name", "avatar", "resetAvatar"]);
 
 export default defineEventHandler(async (event) => {
-  const { user, session } = await requireUserSession(event, { user: { emailVerified: true } });
+  const { user, session } = await requireAccountSession(event, { user: { emailVerified: true } });
   const form = await uploadForm(event, avatarMaxBytes + 8 * 1024);
   const account = form.get("accountId");
   if (

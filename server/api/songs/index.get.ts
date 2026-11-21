@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, getQuery, setResponseHeader } from "h3";
-import { requireUserSession } from "#better-auth-session";
+import { requireAccountSession } from "~~/server/utils/account-session";
 import { and, desc, eq, exists, inArray, notExists, or, sql } from "drizzle-orm";
 import { offlineOwnerHeader } from "~~/shared/offline-library";
 import type { SongDetails } from "~~/shared/types/library";
@@ -8,7 +8,7 @@ import { libraryDatabase } from "../../utils/library";
 import { songFields } from "../../utils/library-songs";
 
 export default defineEventHandler(async (event) => {
-  const { user } = await requireUserSession(event, { user: { emailVerified: true } });
+  const { user } = await requireAccountSession(event, { user: { emailVerified: true } });
   setResponseHeader(event, offlineOwnerHeader, user.id);
   const db = libraryDatabase(event);
   const query = getQuery(event);

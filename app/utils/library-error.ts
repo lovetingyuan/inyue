@@ -1,12 +1,14 @@
 const messages: Record<string, string> = {
   AUDIO_SIZE: "MP3 不能超过 15 MiB。",
   COVER_SIZE: "封面不能超过 1 MiB。",
+  LYRICS_SIZE: "歌词文件不能超过 64 KiB。",
   UPLOAD_SIZE: "上传大小超过限制。",
   INVALID_METADATA: "请检查必填字段、年份和文字长度。",
   LIBRARY_QUOTA_EXCEEDED: "存储空间不足。",
   MISSING_AUDIO: "请选择 MP3 文件。",
   UNSUPPORTED_AUDIO: "请选择有效的 MP3 文件。",
   UNSUPPORTED_COVER: "封面仅支持 JPEG、PNG 和 WebP。",
+  UNSUPPORTED_LYRICS: "请选择包含时间轴的有效 LRC 歌词文件。",
   SONG_NOT_FOUND: "歌曲已不存在。",
   PLAYLIST_NOT_FOUND: "歌单已不存在。",
   PLAYLIST_NAME_TAKEN: "歌单名称已存在。",
@@ -53,6 +55,9 @@ export function libraryFormError(error: unknown) {
     case "COVER_SIZE":
     case "UNSUPPORTED_COVER":
       return { field: "cover", message };
+    case "LYRICS_SIZE":
+    case "UNSUPPORTED_LYRICS":
+      return { field: "lyrics", message };
     case "PLAYLIST_NAME_TAKEN":
       return { field: "name", message };
     case "INVALID_METADATA": {

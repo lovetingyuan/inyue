@@ -1,11 +1,11 @@
 import { defineEventHandler } from "h3";
-import { requireUserSession } from "#better-auth-session";
+import { requireAccountSession } from "~~/server/utils/account-session";
 import { integrationMedia } from "../../utils/integration-media";
 import { signMedia } from "../../utils/media-access";
 
 export default defineEventHandler(async (event) => {
   const { secret, origin } = integrationMedia(event);
-  const auth = await requireUserSession(event, { user: { emailVerified: true } });
+  const auth = await requireAccountSession(event, { user: { emailVerified: true } });
   const expires = Date.now() + 24 * 60 * 60 * 1000;
   return Promise.all(
     ["1", "2", "3"].map(async (id) => {

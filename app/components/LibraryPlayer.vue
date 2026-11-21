@@ -182,6 +182,7 @@ async function cycleMode() {
       </div>
       <div
         v-if="track"
+        data-drawer-gesture-ignore
         class="relative grid grid-cols-[minmax(0,1fr)_auto_6rem] items-center gap-x-2 gap-y-1 rounded-box bg-neutral px-2.5 py-2 text-neutral-content shadow-lg @min-[40rem]/player:px-4 @min-[48rem]/player:grid-cols-[minmax(0,1fr)_minmax(14rem,1.4fr)_minmax(0,1fr)]"
       >
         <div

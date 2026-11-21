@@ -1,6 +1,6 @@
 import { useRuntimeConfig } from "nitropack/runtime";
 import { createError, defineEventHandler, getRequestURL, readBody, setResponseHeader } from "h3";
-import { requireUserSession } from "#better-auth-session";
+import { requireAccountSession } from "~~/server/utils/account-session";
 import { and, eq, inArray } from "drizzle-orm";
 import { offlineOwnerHeader } from "~~/shared/offline-library";
 import { files, songs } from "../../database/library-schema";
@@ -16,7 +16,7 @@ function validIds(value: unknown): value is string[] {
 }
 
 export default defineEventHandler(async (event) => {
-  const auth = await requireUserSession(event, { user: { emailVerified: true } });
+  const auth = await requireAccountSession(event, { user: { emailVerified: true } });
   const body = await readBody<{ songIds?: unknown; coverIds?: unknown } | null>(event);
   const songIds = body?.songIds ?? [];
   const coverIds = body?.coverIds ?? [];
@@ -34,6 +34,7 @@ export default defineEventHandler(async (event) => {
         artist: songs.artist,
         album: songs.album,
         year: songs.year,
+        lyrics: songs.lyrics,
         duration: songs.duration,
         audioId: songs.audioId,
         coverId: songs.coverId,

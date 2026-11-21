@@ -4,11 +4,13 @@ import AsyncButton from "~/components/AsyncButton.vue";
 import { usePlayerStore } from "~/stores/player";
 import PlaybackSlider from "~/components/PlaybackSlider.vue";
 import PlaybackProgress from "~/components/PlaybackProgress.vue";
+import MusicLyrics from "~/components/MusicLyrics.vue";
 import MusicArtwork from "~/components/MusicArtwork.vue";
-import { useTemplateRef } from "vue";
+import { computed, ref, useTemplateRef, watch } from "vue";
 import { ChevronDown, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { Component } from "vue";
+import { parseLrc } from "~~/shared/lrc";
 
 defineOptions({ name: "NowPlayingDialog" });
 defineProps<{
@@ -26,12 +28,39 @@ const emit = defineEmits<{
 }>();
 
 const player = usePlayerStore();
-const { current: track, volume, playing, loading, error } = storeToRefs(player);
+const { current: track, position, volume, playing, loading, error } = storeToRefs(player);
 const dialog = useTemplateRef("dialog");
 const progressBar = useTemplateRef("progressBar");
+const dialogOpen = ref(false);
+const hasLyrics = computed(() =>
+  Boolean(track.value?.lyrics && parseLrc(track.value.lyrics).length),
+);
+const showLyrics = ref(false);
+const lyricPosition = computed(() => progressBar.value?.displayedPosition ?? position.value);
+const scrubbing = computed(() => progressBar.value?.scrubbing ?? false);
+
+watch(
+  [() => track.value?.id, hasLyrics],
+  () => {
+    showLyrics.value = hasLyrics.value;
+  },
+  { immediate: true },
+);
+
+function open() {
+  showLyrics.value = hasLyrics.value;
+  dialogOpen.value = true;
+  showMusicDialog(dialog.value);
+}
+
+function handleClose() {
+  progressBar.value?.resetPreview();
+  dialogOpen.value = false;
+  showLyrics.value = hasLyrics.value;
+}
 
 defineExpose({
-  open: () => showMusicDialog(dialog.value),
+  open,
   close: () => dialog.value?.close(),
 });
 </script>
@@ -42,7 +71,7 @@ defineExpose({
     class="modal"
     aria-labelledby="now-playing-title"
     data-playback-shortcuts
-    @close="progressBar?.resetPreview()"
+    @close="handleClose"
   >
     <div
       class="modal-box safe-panel flex h-dvh max-h-dvh w-screen max-w-none flex-col rounded-none bg-base-100 bg-linear-to-b from-primary/10 to-transparent to-70% p-0 sm:h-auto sm:max-h-[90dvh] sm:w-md sm:rounded-box"
@@ -66,13 +95,37 @@ defineExpose({
       </header>
       <div v-if="track" class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-2.5 sm:px-8">
         <div class="m-auto grid w-full max-w-sm shrink-0 gap-[clamp(0.875rem,2.2dvh,1.375rem)]">
-          <MusicArtwork
-            :src="track.coverUrl"
-            class="ml-0! w-full max-w-[min(18rem,42dvh)] justify-self-center rounded-[1.5rem]! shadow-xl shadow-base-content/15 ring-1 ring-base-content/8 sm:max-w-[min(16.5rem,36dvh)]"
-          />
-          <div class="min-w-0">
+          <div class="relative grid place-items-center">
+            <MusicArtwork
+              :src="track.coverUrl"
+              class="ml-0! w-full max-w-[min(18rem,42dvh)] rounded-[1.5rem]! shadow-xl shadow-base-content/15 ring-1 ring-base-content/8 sm:max-w-[min(16.5rem,36dvh)]"
+              :class="{ invisible: hasLyrics && showLyrics }"
+              :aria-hidden="(hasLyrics && showLyrics) || undefined"
+            />
+            <MusicLyrics
+              v-if="dialogOpen && hasLyrics && showLyrics"
+              :lyrics="track.lyrics"
+              :position="lyricPosition"
+              :scrubbing="scrubbing"
+              class="absolute inset-0"
+            />
+            <button
+              v-if="hasLyrics"
+              type="button"
+              class="absolute inset-0 z-10 cursor-pointer select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+              :class="
+                showLyrics
+                  ? 'rounded-xl'
+                  : 'mx-auto aspect-square w-full max-w-[min(18rem,42dvh)] rounded-[1.5rem] sm:max-w-[min(16.5rem,36dvh)]'
+              "
+              :aria-pressed="showLyrics"
+              :aria-label="showLyrics ? '显示封面' : '显示歌词'"
+              @click="showLyrics = !showLyrics"
+            />
+          </div>
+          <div class="min-w-0 mt-4">
             <p
-              class="truncate text-[clamp(1.5rem,5vw,1.875rem)] leading-tight font-bold tracking-tight"
+              class="truncate text-[clamp(1.125rem,4vw,1.375rem)] leading-tight font-bold tracking-tight"
               :title="track.title"
             >
               {{ track.title }}

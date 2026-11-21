@@ -4,7 +4,7 @@ import { useAppStore } from "~/stores/app";
 import PlaylistNavigation from "~/components/PlaylistNavigation.vue";
 import AccountAvatar from "~/components/AccountAvatar.vue";
 import AccountSettingsDialog from "~/components/AccountSettingsDialog.vue";
-import { useTemplateRef, watch } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, useTemplateRef, watch } from "vue";
 import { NuxtLink } from "#components";
 import { useRoute } from "#app";
 import { Menu, Plus, X } from "@lucide/vue";
@@ -12,6 +12,7 @@ import { useMediaQuery } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import PlaylistEditorDialog from "~/components/PlaylistEditorDialog.vue";
 import { usePlaylistQuery } from "~/composables/useLibraryQueries";
+import { attachDrawerGesture } from "~/utils/drawer-gesture";
 
 defineOptions({ name: "LibraryLayout" });
 
@@ -26,6 +27,36 @@ const profile = useTemplateRef("profile");
 const playlistEditor = useTemplateRef("playlistEditor");
 const drawerTrigger = useTemplateRef<HTMLButtonElement>("drawerTrigger");
 const drawerClose = useTemplateRef<HTMLButtonElement>("drawerClose");
+const drawerRoot = useTemplateRef<HTMLDivElement>("drawerRoot");
+const drawerSide = useTemplateRef<HTMLDivElement>("drawerSide");
+const drawerOverlay = useTemplateRef<HTMLLabelElement>("drawerOverlay");
+const drawerAside = useTemplateRef<HTMLElement>("drawerAside");
+let drawerGesture: ReturnType<typeof attachDrawerGesture> | undefined;
+
+onMounted(() => {
+  if (!drawerRoot.value || !drawerSide.value || !drawerOverlay.value || !drawerAside.value) {
+    return;
+  }
+  drawerGesture = attachDrawerGesture({
+    root: drawerRoot.value,
+    side: drawerSide.value,
+    overlay: drawerOverlay.value,
+    aside: drawerAside.value,
+    isEnabled: () => !desktop.value,
+    canOpen: () => offline.value || route.path !== "/songs/new",
+    isOpen: () => drawerOpen.value,
+    async onCommit(open) {
+      if (drawerOpen.value !== open) {
+        drawerOpen.value = open;
+        await nextTick();
+      }
+    },
+  });
+});
+
+onBeforeUnmount(() => {
+  drawerGesture?.destroy();
+});
 
 watch(desktop, (matches) => {
   if (matches) {
@@ -37,6 +68,13 @@ watch(
   () => {
     drawerOpen.value = false;
   },
+);
+watch(
+  [desktop, () => route.path, drawerOpen],
+  () => {
+    drawerGesture?.reset();
+  },
+  { flush: "post" },
 );
 watch(
   drawerOpen,
@@ -54,6 +92,7 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
 
 <template>
   <div
+    ref="drawerRoot"
     class="drawer app-height mx-auto max-w-[100rem] grid-rows-[minmax(0,1fr)] md:drawer-open"
     :class="{ 'select-none': app.native }"
   >
@@ -91,12 +130,19 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
       </main>
     </div>
     <div
+      ref="drawerSide"
       class="drawer-side motion-safe:transition-opacity md:h-full"
       :inert="!desktop && !drawerOpen"
     >
-      <label for="music-drawer" class="drawer-overlay md:hidden" aria-hidden="true" />
+      <label
+        ref="drawerOverlay"
+        for="music-drawer"
+        class="drawer-overlay md:hidden"
+        aria-hidden="true"
+      />
       <aside
         id="music-sidebar"
+        ref="drawerAside"
         class="flex h-full w-[min(18rem,85vw)] flex-col border-r border-base-300 bg-base-200 max-md:pt-[var(--safe-area-inset-top,env(safe-area-inset-top))] max-md:pb-[var(--safe-area-inset-bottom,env(safe-area-inset-bottom))] max-md:pl-[var(--safe-area-inset-left,env(safe-area-inset-left))] md:w-56 lg:w-64"
         :role="drawerOpen ? 'dialog' : undefined"
         :aria-modal="drawerOpen ? true : undefined"

@@ -4,6 +4,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { lockAndroidBuild } from "./android-build-lock.mjs";
+import { removePublicSourcemaps, uploadSentrySourcemaps } from "./sentry-sourcemaps.mjs";
 
 const require = createRequire(import.meta.url);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -29,6 +30,11 @@ try {
 
   console.log(`构建正式环境 Android APK：${productionOrigin}`);
   run(process.execPath, [nuxt, "generate", "--envName", "capacitor"]);
+  if (environment.INYUE_SENTRY_SOURCEMAPS === "1") {
+    const clientAssets = join(root, ".output-capacitor", "public", "_nuxt");
+    uploadSentrySourcemaps(root, "inyue-android", clientAssets);
+    removePublicSourcemaps(clientAssets);
+  }
   run(process.execPath, [capacitor, "sync", "android"]);
 
   if (windows) {

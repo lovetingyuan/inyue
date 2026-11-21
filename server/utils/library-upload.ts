@@ -1,5 +1,11 @@
 import { createError, getRequestHeader, readMultipartFormData } from "h3";
-import { audioMaxBytes, coverMaxBytes, uploadMaxBytes } from "../../shared/library-limits";
+import { decodeLrcBytes, parseLrc } from "../../shared/lrc";
+import {
+  audioMaxBytes,
+  coverMaxBytes,
+  lyricsMaxBytes,
+  uploadMaxBytes,
+} from "../../shared/library-limits";
 import type { H3Event, MultiPartData } from "h3";
 
 export async function uploadForm(event: H3Event, maxBytes = uploadMaxBytes) {
@@ -82,4 +88,21 @@ export async function audioUpload(part?: MultiPartData) {
     throw createError({ statusCode: 415, statusMessage: "UNSUPPORTED_AUDIO" });
   }
   return { data: part.data, contentType: "audio/mpeg", duration: format.duration ?? null };
+}
+
+export function lyricsUpload(part?: MultiPartData) {
+  if (!part) {
+    return null;
+  }
+  if (!part.filename || !part.data.length) {
+    throw createError({ statusCode: 415, statusMessage: "UNSUPPORTED_LYRICS" });
+  }
+  if (part.data.length > lyricsMaxBytes) {
+    throw createError({ statusCode: 413, statusMessage: "LYRICS_SIZE" });
+  }
+  const text = decodeLrcBytes(part.data);
+  if (!text || !parseLrc(text).length) {
+    throw createError({ statusCode: 415, statusMessage: "UNSUPPORTED_LYRICS" });
+  }
+  return text;
 }

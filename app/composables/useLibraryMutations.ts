@@ -27,7 +27,7 @@ export function useSongSave() {
         return;
       }
       if (songId && song) {
-        player.updateTrackYear(songId, song.year);
+        player.updateTrackMetadata(song);
       }
       player.invalidateQueue();
       const scope = session.offlineScope;

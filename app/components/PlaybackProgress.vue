@@ -12,28 +12,39 @@ defineProps<{ layout: "inline" | "stacked" }>();
 const player = usePlayerStore();
 const { current: track, position } = storeToRefs(player);
 const preview = ref<number>();
+const scrubbing = computed(() => preview.value !== undefined);
 const duration = computed(() => track.value?.duration || 0);
 const displayedPosition = computed(() => preview.value ?? position.value);
 const fill = computed(() =>
   duration.value ? Math.min(1, Math.max(0, displayedPosition.value / duration.value)) : 0,
 );
+let seekSequence = 0;
 
 function resetPreview() {
+  seekSequence += 1;
   preview.value = undefined;
 }
 
-function commitSeek(value: number) {
-  resetPreview();
-  void player.seek(value);
+async function commitSeek(value: number) {
+  const sequence = ++seekSequence;
+  preview.value = value;
+  try {
+    await player.seek(value);
+  } finally {
+    if (sequence === seekSequence) {
+      preview.value = undefined;
+    }
+  }
 }
 
 watch(() => track.value?.id, resetPreview, { flush: "sync" });
 watch(useDocumentVisibility(), resetPreview);
-defineExpose({ resetPreview });
+defineExpose({ resetPreview, displayedPosition, scrubbing });
 </script>
 
 <template>
   <div
+    data-drawer-gesture-ignore
     class="grid w-full items-center tabular-nums"
     :class="
       layout === 'inline'

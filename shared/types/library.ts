@@ -7,6 +7,7 @@ export interface Song {
   lyricist: string | null;
   composer: string | null;
   description: string | null;
+  lyrics: string | null;
   duration: number | null;
   coverId: string | null;
   createdAt: number;
@@ -47,6 +48,7 @@ export interface Track {
   artist: string;
   album: string | null;
   year: number | null;
+  lyrics: string | null;
   duration: number | null;
   url: string;
   coverId: string | null;
@@ -68,4 +70,9 @@ export interface PlaybackSnapshot {
   mode: PlaybackMode;
   volume: number;
   queueKey?: string;
+}
+
+export interface LrcLine {
+  time: number;
+  lines: string[];
 }

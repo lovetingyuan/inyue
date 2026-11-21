@@ -3,8 +3,10 @@ import { lstatSync, readlinkSync, unlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { defineNuxtConfig } from "nuxt/config";
+import { addVitePlugin } from "nuxt/kit";
 import { vueVitePlugin } from "vite-plugin-dom-source";
 import webManifest from "./public/manifest.json";
 import { appName, officialSiteUrl } from "./shared/app-brand";
@@ -27,6 +29,7 @@ function getGitHash() {
 
 const buildTime = process.env.VITE_BUILD_TIME || Date.now().toString();
 const buildHash = process.env.VITE_GIT_HASH || getGitHash();
+const sentrySourcemaps = process.env.INYUE_SENTRY_SOURCEMAPS === "1";
 
 export default defineNuxtConfig({
   telemetry: false,
@@ -117,11 +120,27 @@ export default defineNuxtConfig({
 
   modules: [
     "nitro-cloudflare-dev",
+    "@sentry/nuxt/module",
     "@nuxtjs/better-auth",
     "@vite-pwa/nuxt",
     "@pinia/nuxt",
     "@pinia/colada-nuxt",
+    () => {
+      if (sentrySourcemaps) {
+        addVitePlugin(
+          sentryVitePlugin({
+            sourcemaps: { disable: "disable-upload" },
+            release: { inject: false, create: false, finalize: false },
+            telemetry: false,
+          }),
+          { server: false, dev: false },
+        );
+      }
+    },
   ],
+
+  sentry: { sourcemaps: { disable: true } },
+  sourcemap: { client: sentrySourcemaps ? "hidden" : false },
 
   pwa: {
     registerType: "prompt",
@@ -212,6 +231,7 @@ export default defineNuxtConfig({
   },
 
   runtimeConfig: {
+    sentryServerDsn: "",
     resendApiKey: "",
     mailFrom: "",
     mailPreview: false,
@@ -220,6 +240,10 @@ export default defineNuxtConfig({
     integrationPlayback: false,
     googleClientSecret: "",
     public: {
+      sentryWebDsn: "",
+      sentryAndroidDsn: "",
+      sentryEnvironment: "",
+      sentryRelease: `inyue@${buildHash}+${buildTime}`,
       siteUrl: "",
       mobileApiOrigin: "",
       mobileLocalTest: false,

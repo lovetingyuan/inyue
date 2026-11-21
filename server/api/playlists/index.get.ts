@@ -1,5 +1,5 @@
 import { defineEventHandler, setResponseHeader } from "h3";
-import { requireUserSession } from "#better-auth-session";
+import { requireAccountSession } from "~~/server/utils/account-session";
 import { desc, eq } from "drizzle-orm";
 import { offlineOwnerHeader } from "~~/shared/offline-library";
 import { playlists } from "../../database/library-schema";
@@ -7,7 +7,7 @@ import { libraryDatabase } from "../../utils/library";
 import { playlistFields } from "../../utils/library-playlists";
 
 export default defineEventHandler(async (event) => {
-  const { user } = await requireUserSession(event, { user: { emailVerified: true } });
+  const { user } = await requireAccountSession(event, { user: { emailVerified: true } });
   setResponseHeader(event, offlineOwnerHeader, user.id);
   return libraryDatabase(event)
     .select(playlistFields)

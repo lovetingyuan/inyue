@@ -1,12 +1,12 @@
 import { defineEventHandler, getRouterParam, sendNoContent } from "h3";
-import { requireUserSession } from "#better-auth-session";
+import { requireAccountSession } from "~~/server/utils/account-session";
 import { and, eq } from "drizzle-orm";
 import { memberships } from "../../../../database/library-schema";
 import { libraryDatabase } from "../../../../utils/library";
 import { ownedPlaylist } from "../../../../utils/library-playlists";
 
 export default defineEventHandler(async (event) => {
-  const { user } = await requireUserSession(event, { user: { emailVerified: true } });
+  const { user } = await requireAccountSession(event, { user: { emailVerified: true } });
   const db = libraryDatabase(event);
   const playlistId = getRouterParam(event, "id") ?? "";
   const songId = getRouterParam(event, "songId") ?? "";

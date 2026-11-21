@@ -10,6 +10,7 @@ import type {
   MediaAuthorization,
   PlaybackMode,
   PlaybackSnapshot,
+  Song,
   SongDetails,
   Track,
 } from "~~/shared/types/library";
@@ -104,8 +105,26 @@ export const usePlayerStore = defineStore("player", () => {
     return read;
   }
 
+  function sampleProgress() {
+    if (native) {
+      return Boolean(readNativeProgress());
+    }
+    if (
+      !playing.value ||
+      !audio ||
+      visibility.value !== "visible" ||
+      !id.value ||
+      owner !== requestedOwner ||
+      pendingTrack.value
+    ) {
+      return false;
+    }
+    sampledPosition.value = audio.currentTime;
+    return true;
+  }
+
   const { pause: stopProgressSampling, resume: startProgressSampling } = useIntervalFn(
-    readNativeProgress,
+    sampleProgress,
     100,
     { immediate: false },
   );
@@ -115,7 +134,7 @@ export const usePlayerStore = defineStore("player", () => {
       nativeRead = undefined;
       sampledPosition.value = undefined;
       stopProgressSampling();
-      if (readNativeProgress() && playing.value) {
+      if (sampleProgress() && playing.value) {
         startProgressSampling();
       }
     },
@@ -361,6 +380,9 @@ export const usePlayerStore = defineStore("player", () => {
       playing.value = true;
     };
     audio.onpause = () => {
+      if (audio) {
+        position.value = audio.currentTime;
+      }
       playing.value = false;
       loading.value = false;
     };
@@ -441,6 +463,7 @@ export const usePlayerStore = defineStore("player", () => {
       promoteNativeCache(previous);
     }
     position.value = time;
+    sampledPosition.value = undefined;
     if (native) {
       try {
         nativeResumeAfterError = false;
@@ -619,6 +642,7 @@ export const usePlayerStore = defineStore("player", () => {
         const previous = byId.get(song.id);
         byId.set(song.id, {
           ...song,
+          lyrics: song.lyrics ?? null,
           coverUrl: previous?.coverId === song.coverId ? (previous.coverUrl ?? null) : null,
         });
       }
@@ -813,6 +837,7 @@ export const usePlayerStore = defineStore("player", () => {
     } else if (audio) {
       audio.currentTime = time;
       position.value = audio.currentTime;
+      sampledPosition.value = playing.value ? audio.currentTime : undefined;
     }
   }
 
@@ -1109,10 +1134,22 @@ export const usePlayerStore = defineStore("player", () => {
     step: (direction: number) => run(() => step(direction)),
     seek: (time: number) => run(() => seek(time)),
     setVolume: (value: number) => run(() => setVolume(value)),
-    updateTrackYear(trackId: string, year: number | null) {
-      tracks.value = tracks.value.map((track) =>
-        track.id === trackId ? { ...track, year } : track,
-      );
+    updateTrackMetadata(song: Song) {
+      const apply = <T extends Omit<Track, "url">>(track: T): T =>
+        track.id === song.id
+          ? {
+              ...track,
+              title: song.title,
+              artist: song.artist,
+              album: song.album,
+              year: song.year,
+              lyrics: song.lyrics,
+            }
+          : track;
+      tracks.value = tracks.value.map(apply);
+      if (pendingTrack.value?.id === song.id) {
+        pendingTrack.value = apply(pendingTrack.value);
+      }
     },
     setMode: (value: PlaybackMode) => run(() => setMode(value)),
     refresh: () => run(refresh),

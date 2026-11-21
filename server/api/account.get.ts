@@ -1,5 +1,5 @@
 import { defineEventHandler, setResponseHeader } from "h3";
-import { requireUserSession } from "#better-auth-session";
+import { requireAccountSession } from "~~/server/utils/account-session";
 import { and, eq, sum } from "drizzle-orm";
 import { account as authAccounts } from "../database/auth-schema";
 import { files } from "../database/library-schema";
@@ -9,7 +9,7 @@ import { libraryDatabase, libraryQuota } from "../utils/library";
 import { offlineExpiryHeader } from "~~/shared/offline-library";
 
 export default defineEventHandler(async (event) => {
-  const { user, session } = await requireUserSession(event, { user: { emailVerified: true } });
+  const { user, session } = await requireAccountSession(event, { user: { emailVerified: true } });
   setResponseHeader(event, offlineExpiryHeader, String(new Date(session.expiresAt).getTime()));
   const db = libraryDatabase(event);
   const [[usage], [profile], [googleAccount]] = await db.batch([

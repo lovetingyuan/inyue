@@ -4,11 +4,12 @@ import { useAppStore } from "~/stores/app";
 import { useSongSave } from "~/composables/useLibraryMutations";
 import MusicArtwork from "~/components/MusicArtwork.vue";
 import { computed, reactive, ref, shallowRef, useId, useTemplateRef, watch } from "vue";
-import { ClipboardPaste, Image, Music, Plus, X } from "@lucide/vue";
+import { ClipboardPaste, FileText, Image, Music, Plus, X } from "@lucide/vue";
 import { Capacitor } from "@capacitor/core";
 import { useObjectUrl } from "@vueuse/core";
 import type { Song } from "~~/shared/types/library";
-import { audioMaxBytes, coverMaxBytes } from "~~/shared/library-limits";
+import { decodeLrcBytes, parseLrc } from "~~/shared/lrc";
+import { audioMaxBytes, coverMaxBytes, lyricsMaxBytes } from "~~/shared/library-limits";
 
 const props = defineProps<{ song?: Song; coverUrl?: string }>();
 const emit = defineEmits<{ saved: []; cancel: [] }>();
@@ -24,23 +25,34 @@ const form = reactive({
 });
 const audio = shallowRef<File>();
 const cover = shallowRef<File>();
+const lyrics = shallowRef<File>();
 const localCoverUrl = useObjectUrl(cover);
 const audioInput = useTemplateRef("audioInput");
 const coverInput = useTemplateRef("coverInput");
+const lyricsInput = useTemplateRef("lyricsInput");
 const removeCover = ref(false);
+const removeLyrics = ref(false);
 const hasCover = computed(() =>
   Boolean(cover.value || (props.song?.coverId && !removeCover.value)),
 );
+const hasLyrics = computed(() =>
+  Boolean(lyrics.value || (props.song?.lyrics && !removeLyrics.value)),
+);
 const oversizedCover = ref(false);
 const reading = ref(false);
+const readingLyrics = ref(false);
 const pasting = ref(false);
 const busy = saveSong.isLoading;
 const app = useAppStore();
 const formDisabled = computed(() => busy.value || app.offline);
-const mediaBusy = computed(() => formDisabled.value || reading.value || pasting.value);
+const mediaBusy = computed(
+  () => formDisabled.value || reading.value || readingLyrics.value || pasting.value,
+);
 const error = ref("");
 const fieldId = useId();
-const fieldErrors = reactive<Partial<Record<keyof typeof form | "audio" | "cover", string>>>({});
+const fieldErrors = reactive<
+  Partial<Record<keyof typeof form | "audio" | "cover" | "lyrics", string>>
+>({});
 const audioNotice = ref("");
 const pasteNotice = ref("");
 const coverTypes = ["image/jpeg", "image/png", "image/webp"];
@@ -198,6 +210,46 @@ function clearCover() {
   removeCover.value = true;
 }
 
+async function selectLyricsFile(event: Event) {
+  if (!(event.target instanceof HTMLInputElement)) {
+    return;
+  }
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (mediaBusy.value || !file) {
+    return;
+  }
+  fieldErrors.lyrics = "";
+  if (file.size > lyricsMaxBytes) {
+    lyrics.value = undefined;
+    fieldErrors.lyrics = "歌词文件不能超过 64 KiB。";
+    return;
+  }
+  readingLyrics.value = true;
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const text = decodeLrcBytes(bytes);
+    if (!text || !parseLrc(text).length) {
+      lyrics.value = undefined;
+      fieldErrors.lyrics = "请选择包含时间轴的有效 LRC 歌词文件。";
+      return;
+    }
+    lyrics.value = file;
+    removeLyrics.value = false;
+  } catch {
+    lyrics.value = undefined;
+    fieldErrors.lyrics = "无法读取歌词文件。";
+  } finally {
+    readingLyrics.value = false;
+  }
+}
+
+function clearLyrics() {
+  lyrics.value = undefined;
+  fieldErrors.lyrics = "";
+  removeLyrics.value = true;
+}
+
 async function save() {
   if (app.offline) {
     return;
@@ -242,13 +294,19 @@ async function save() {
   if (removeCover.value) {
     body.set("removeCover", "true");
   }
+  if (lyrics.value) {
+    body.set("lyrics", lyrics.value);
+  }
+  if (removeLyrics.value) {
+    body.set("removeLyrics", "true");
+  }
   try {
     await saveSong.mutateAsync({ songId: props.song?.id, body });
     emit("saved");
   } catch (cause) {
     const { field, message } = libraryFormError(cause);
     const metadataField = fields.find(({ name }) => name === field)?.name;
-    if (field === "audio" || field === "cover" || field === "description") {
+    if (field === "audio" || field === "cover" || field === "lyrics" || field === "description") {
       fieldErrors[field] = message;
     } else if (metadataField) {
       fieldErrors[metadataField] = message;
@@ -432,6 +490,81 @@ defineExpose({ busy });
           </p>
           <p v-if="pasteNotice" class="mt-1 text-xs text-error" role="status">
             {{ pasteNotice }}
+          </p>
+        </div>
+        <div class="min-w-0" :class="{ 'sm:col-span-2': !song }">
+          <input
+            ref="lyricsInput"
+            type="file"
+            hidden
+            :accept="app.native ? undefined : '.lrc'"
+            :disabled="mediaBusy"
+            @change="selectLyricsFile"
+          />
+          <div
+            class="validator flex h-14 items-center rounded-box border bg-base-100 transition-colors hover:bg-base-200/50"
+            :class="fieldErrors.lyrics ? 'border-error' : 'border-base-300'"
+          >
+            <button
+              class="btn btn-ghost h-full min-w-0 flex-1 justify-start gap-3 rounded-box border-0 px-3 text-left hover:bg-transparent hover:shadow-none"
+              type="button"
+              :disabled="mediaBusy"
+              :aria-invalid="!!fieldErrors.lyrics"
+              :aria-describedby="fieldErrors.lyrics ? `${fieldId}-lyrics-error` : undefined"
+              :aria-busy="readingLyrics"
+              @click="lyricsInput?.click()"
+            >
+              <span
+                class="grid size-9 shrink-0 place-items-center rounded-field bg-base-200 text-base-content/75"
+              >
+                <span
+                  v-if="readingLyrics"
+                  class="loading loading-spinner loading-xs"
+                  aria-hidden="true"
+                />
+                <FileText v-else class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="block text-sm">{{ hasLyrics ? "更换歌词" : "选择歌词" }}</span>
+                <span
+                  class="block truncate text-xs font-normal text-base-content/70"
+                  :title="lyrics?.name"
+                >
+                  {{
+                    readingLyrics
+                      ? "读取歌词中…"
+                      : (lyrics?.name ?? (hasLyrics ? "已有 LRC 歌词" : "可选 · LRC，最大 64 KiB"))
+                  }}
+                </span>
+              </span>
+              <Plus
+                v-if="!hasLyrics && !fieldErrors.lyrics"
+                class="size-5 shrink-0 text-base-content/65"
+                :stroke-width="1.8"
+                aria-hidden="true"
+              />
+            </button>
+            <button
+              v-if="hasLyrics || fieldErrors.lyrics"
+              class="btn btn-ghost btn-circle mr-1 size-11 shrink-0 hover:bg-transparent hover:text-error hover:shadow-none"
+              type="button"
+              aria-label="移除歌词"
+              :disabled="mediaBusy"
+              @click="clearLyrics"
+            >
+              <X class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+            </button>
+          </div>
+          <span class="sr-only" role="status">{{
+            readingLyrics ? "读取歌词中…" : lyrics?.name
+          }}</span>
+          <p
+            v-if="fieldErrors.lyrics"
+            :id="`${fieldId}-lyrics-error`"
+            class="validator-hint mt-1"
+            role="alert"
+          >
+            {{ fieldErrors.lyrics }}
           </p>
         </div>
       </div>

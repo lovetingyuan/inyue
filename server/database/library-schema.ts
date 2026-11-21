@@ -20,6 +20,7 @@ export const songs = sqliteTable("song", {
   lyricist: text(),
   composer: text(),
   description: text(),
+  lyrics: text(),
   duration: real(),
   audioId: text("audio_id").notNull(),
   coverId: text("cover_id"),
