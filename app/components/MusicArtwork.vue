@@ -27,6 +27,8 @@ watch(
       v-if="src && !broken"
       :src="artwork"
       alt=""
+      loading="lazy"
+      decoding="async"
       class="absolute inset-0 size-full object-cover"
       @error="broken = true"
     />

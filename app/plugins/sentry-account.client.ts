@@ -5,7 +5,8 @@ import { useSessionStore } from "~/stores/session";
 
 export default defineNuxtPlugin((nuxtApp) => {
   nuxtApp.hook("app:mounted", () => {
-    if (!getClient()) {
+    const client = getClient();
+    if (!client) {
       return;
     }
 
@@ -17,5 +18,21 @@ export default defineNuxtPlugin((nuxtApp) => {
       },
       { immediate: true, flush: "sync" },
     );
+
+    const loadReplay = () => {
+      void import("~/utils/sentry-replay")
+        .then(({ replayIntegration }) => {
+          const activeClient = getClient();
+          if (activeClient && !activeClient.getIntegrationByName("Replay")) {
+            activeClient.addIntegration(replayIntegration());
+          }
+        })
+        .catch(() => {});
+    };
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(loadReplay, { timeout: 2000 });
+    } else {
+      setTimeout(loadReplay, 1000);
+    }
   });
 });

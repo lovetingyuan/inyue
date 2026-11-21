@@ -3,9 +3,8 @@ import { useSessionStore } from "~/stores/session";
 import { useAppStore } from "~/stores/app";
 import { useAppSession } from "~/composables/useAppSession";
 import StartupScreen from "~/components/StartupScreen.vue";
-import IntegrationPlaybackView from "~/components/IntegrationPlaybackView.vue";
 import AppToast from "~/components/AppToast.vue";
-import { computed, onServerPrefetch, watch } from "vue";
+import { computed, defineAsyncComponent, onServerPrefetch, watch } from "vue";
 import { NuxtLayout, NuxtPage, NuxtPwaManifest, NuxtRouteAnnouncer } from "#components";
 import { navigateTo, useHead, useNuxtApp, useRouter, useRuntimeConfig } from "#app";
 import { useStorage } from "@vueuse/core";
@@ -14,6 +13,10 @@ import type { AppTheme } from "~/types/native-theme";
 import { libraryReturnPath } from "~/utils/account-navigation";
 
 defineOptions({ name: "App" });
+
+const IntegrationPlaybackView = defineAsyncComponent(
+  () => import("~/components/IntegrationPlaybackView.vue"),
+);
 
 const app = useAppStore();
 const session = useSessionStore();

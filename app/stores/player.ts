@@ -1,10 +1,11 @@
 import { useSessionStore } from "~/stores/session";
 import { useAppStore } from "~/stores/app";
 import { useMusicApi } from "~/composables/useMusicApi";
+import { releaseCoverObjectUrl, retainCoverObjectUrl } from "~/utils/cover-object-urls";
 import { computed, ref, shallowRef, watch } from "vue";
 import type { PluginListenerHandle } from "@capacitor/core";
 import type { PlaylistPlugin } from "@dwbn/capacitor-plugin-playlist";
-import { useDocumentVisibility, useIntervalFn } from "@vueuse/core";
+import { useDocumentVisibility, useEventListener, useIntervalFn, useThrottleFn } from "@vueuse/core";
 import { defineStore } from "pinia";
 import type {
   MediaAuthorization,
@@ -32,7 +33,12 @@ export const usePlayerStore = defineStore("player", () => {
   const loading = ref(false);
   const error = ref("");
   const pendingTrack = shallowRef<Omit<Track, "url">>();
-  const currentArtwork = shallowRef<{ trackId: string; url: string }>();
+  const currentArtwork = shallowRef<{
+    trackId: string;
+    scope: string;
+    coverId: string;
+    url: string;
+  }>();
   const current = computed(() => {
     if (pendingTrack.value) {
       return pendingTrack.value;
@@ -157,7 +163,7 @@ export const usePlayerStore = defineStore("player", () => {
     };
   }
 
-  watch([ids, order, queueSource, id, position, mode, volume], () => {
+  function persistPlaybackSnapshot() {
     if (!import.meta.client || !owner || owner !== requestedOwner || !ids.value.length) {
       return;
     }
@@ -166,7 +172,27 @@ export const usePlayerStore = defineStore("player", () => {
     } catch {
       /* Storage may be unavailable. */
     }
+  }
+
+  const persistPosition = useThrottleFn(persistPlaybackSnapshot, 2500, true, true);
+
+  watch([ids, order, queueSource, id, mode, volume], persistPlaybackSnapshot);
+  watch(position, () => {
+    persistPosition();
   });
+  watch(playing, (isPlaying) => {
+    if (!isPlaying) {
+      persistPlaybackSnapshot();
+    }
+  });
+  if (import.meta.client) {
+    watch(visibility, (state) => {
+      if (state === "hidden") {
+        persistPlaybackSnapshot();
+      }
+    });
+    useEventListener("pagehide", persistPlaybackSnapshot);
+  }
 
   function playbackError() {
     playing.value = false;
@@ -176,15 +202,25 @@ export const usePlayerStore = defineStore("player", () => {
       : "无法播放，请检查网络或登录状态，再刷新队列。";
   }
 
+  function replaceArtwork(next?: {
+    trackId: string;
+    scope: string;
+    coverId: string;
+    url: string;
+  }) {
+    const previous = currentArtwork.value;
+    currentArtwork.value = next;
+    if (previous) {
+      releaseCoverObjectUrl(previous.scope, previous.coverId);
+    }
+  }
+
   function releaseObjectUrls() {
     if (audioUrl) {
       URL.revokeObjectURL(audioUrl);
+      audioUrl = undefined;
     }
-    if (currentArtwork.value) {
-      URL.revokeObjectURL(currentArtwork.value.url);
-    }
-    audioUrl = undefined;
-    currentArtwork.value = undefined;
+    replaceArtwork();
   }
 
   function mediaUrlIsFresh(url: string) {
@@ -508,6 +544,17 @@ export const usePlayerStore = defineStore("player", () => {
     } else {
       const revision = ownerRevision;
       const scope = useSessionStore().offlineScope;
+      if (scope && track.coverId) {
+        const cachedUrl = retainCoverObjectUrl(scope, track.coverId);
+        if (cachedUrl) {
+          replaceArtwork({
+            trackId: track.id,
+            scope,
+            coverId: track.coverId,
+            url: cachedUrl,
+          });
+        }
+      }
       const media = scope ? await import("~/utils/offline-media") : undefined;
       const local = scope && (await media?.readOfflineMedia(scope, "audio", track.id));
       let source = local ? "" : track.url;
@@ -524,8 +571,12 @@ export const usePlayerStore = defineStore("player", () => {
       const output = webAudio();
       webPlayback = undefined;
       output.pause();
-      releaseObjectUrls();
+      if (audioUrl) {
+        URL.revokeObjectURL(audioUrl);
+        audioUrl = undefined;
+      }
       if (!local && (app.offline || !source)) {
+        replaceArtwork();
         output.removeAttribute("src");
         output.load();
         playbackError();
@@ -540,14 +591,30 @@ export const usePlayerStore = defineStore("player", () => {
       if (autoplay) {
         playWeb(output);
       }
-      if (scope && media && track.coverId) {
-        const cover = await media.readOfflineMedia(scope, "cover", track.coverId);
-        if (revision !== ownerRevision || signal?.aborted) {
-          return;
+      const hasCurrentArtwork =
+        currentArtwork.value?.trackId === track.id &&
+        currentArtwork.value.scope === scope &&
+        currentArtwork.value.coverId === track.coverId;
+      if (!hasCurrentArtwork) {
+        let nextArtwork:
+          | { trackId: string; scope: string; coverId: string; url: string }
+          | undefined;
+        if (scope && media && track.coverId) {
+          let url = retainCoverObjectUrl(scope, track.coverId);
+          if (!url) {
+            const cover = await media.readOfflineMedia(scope, "cover", track.coverId);
+            if (revision !== ownerRevision || signal?.aborted) {
+              return;
+            }
+            if (cover instanceof Blob) {
+              url = retainCoverObjectUrl(scope, track.coverId, cover);
+            }
+          }
+          if (url) {
+            nextArtwork = { trackId: track.id, scope, coverId: track.coverId, url };
+          }
         }
-        if (cover instanceof Blob) {
-          currentArtwork.value = { trackId: track.id, url: URL.createObjectURL(cover) };
-        }
+        replaceArtwork(nextArtwork);
       }
       if ("mediaSession" in navigator) {
         const artwork = currentArtwork.value?.url ?? track.coverUrl;

@@ -8,13 +8,12 @@ export default defineNuxtPlugin((nuxtApp) => {
   }
 
   nuxtApp.hook("app:mounted", async () => {
+    const splashPromise = import("@capacitor/splash-screen");
     await nextTick();
     await document
       .querySelector<HTMLImageElement>("#startup-logo")
       ?.decode()
       .catch(() => {});
-    await import("@capacitor/splash-screen")
-      .then(({ SplashScreen }) => SplashScreen.hide())
-      .catch(console.error);
+    await splashPromise.then(({ SplashScreen }) => SplashScreen.hide()).catch(console.error);
   });
 });

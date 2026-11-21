@@ -27,34 +27,38 @@ export default defineEventHandler(async (event) => {
   const userId = auth.user.id;
   setResponseHeader(event, offlineOwnerHeader, userId);
   const [tracks, covers] = await Promise.all([
-    db
-      .select({
-        id: songs.id,
-        title: songs.title,
-        artist: songs.artist,
-        album: songs.album,
-        year: songs.year,
-        lyrics: songs.lyrics,
-        duration: songs.duration,
-        audioId: songs.audioId,
-        coverId: songs.coverId,
-      })
-      .from(songs)
-      .innerJoin(files, and(eq(songs.audioId, files.id), eq(files.state, "ready")))
-      .where(and(eq(songs.ownerId, userId), inArray(songs.id, songIds)))
-      .all(),
-    db
-      .select({ id: files.id })
-      .from(files)
-      .where(
-        and(
-          eq(files.ownerId, userId),
-          eq(files.state, "ready"),
-          inArray(files.id, coverIds),
-          inArray(files.contentType, ["image/jpeg", "image/png", "image/webp"]),
-        ),
-      )
-      .all(),
+    songIds.length
+      ? db
+          .select({
+            id: songs.id,
+            title: songs.title,
+            artist: songs.artist,
+            album: songs.album,
+            year: songs.year,
+            lyrics: songs.lyrics,
+            duration: songs.duration,
+            audioId: songs.audioId,
+            coverId: songs.coverId,
+          })
+          .from(songs)
+          .innerJoin(files, and(eq(songs.audioId, files.id), eq(files.state, "ready")))
+          .where(and(eq(songs.ownerId, userId), inArray(songs.id, songIds)))
+          .all()
+      : [],
+    coverIds.length
+      ? db
+          .select({ id: files.id })
+          .from(files)
+          .where(
+            and(
+              eq(files.ownerId, userId),
+              eq(files.state, "ready"),
+              inArray(files.id, coverIds),
+              inArray(files.contentType, ["image/jpeg", "image/png", "image/webp"]),
+            ),
+          )
+          .all()
+      : [],
   ]);
   const config = useRuntimeConfig(event);
   const expires = Date.now() + 24 * 60 * 60 * 1000;

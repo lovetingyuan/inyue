@@ -27,6 +27,7 @@ watch(
         :src="image"
         class="object-cover"
         alt=""
+        decoding="async"
         referrerpolicy="no-referrer"
         @error="failed = true"
       />

@@ -1,11 +1,11 @@
 import { useMusicApi } from "~/composables/useMusicApi";
-import { useAuthClient } from "@nuxtjs/better-auth/composables";
+import { useNuxtApp } from "#app";
 import { useMutation, useMutationCache } from "@pinia/colada";
 import type { AccountAction } from "~/types/account";
 
 export function useAccountActions() {
   const { native, request, signIn, signOut } = useMusicApi();
-  const auth = native ? null : useAuthClient();
+  const nuxtApp = useNuxtApp();
   const cache = useMutationCache();
   // Keep credentials out of mutation variables and discard the response and error entry on settlement.
   let action: AccountAction | undefined;
@@ -65,6 +65,8 @@ export function useAccountActions() {
             }
             await signIn({ provider: "google", idToken: { token: result.idToken } });
           } else {
+            const { useAuthClient } = await import("@nuxtjs/better-auth/composables");
+            const auth = await nuxtApp.runWithContext(() => useAuthClient());
             const result = await auth?.signIn.social({
               provider: "google",
               callbackURL: input.callbackURL,

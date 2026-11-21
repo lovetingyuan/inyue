@@ -3,7 +3,7 @@ import { usePlayerStore } from "~/stores/player";
 import { useLibraryStore } from "~/stores/library";
 import { useAppStore } from "~/stores/app";
 import { useMusicApi } from "~/composables/useMusicApi";
-import { computed, shallowRef, watch, watchEffect, type Ref } from "vue";
+import { computed, onScopeDispose, shallowRef, watch, watchEffect, type Ref } from "vue";
 import { useDebounceFn, useEventBus } from "@vueuse/core";
 import { useNuxtApp } from "#app";
 import { useInfiniteQuery, useQuery, useQueryCache, useQueryState } from "@pinia/colada";
@@ -14,6 +14,7 @@ import type {
   SongDetails,
   SongPage,
 } from "~~/shared/types/library";
+import { releaseCoverObjectUrl, retainCoverObjectUrl } from "~/utils/cover-object-urls";
 import { responseStatus } from "~/utils/library-error";
 import { libraryKeys, offlineAudioChanged } from "~/utils/music-query-keys";
 
@@ -268,22 +269,62 @@ function coverKey(userId: string, ids: string[]) {
   return [...libraryKeys.user(userId), "covers", ids] as const;
 }
 
-function useCoverUrls(data: Readonly<Ref<Record<string, Blob | string> | undefined>>) {
+function useCoverUrls(
+  data: Readonly<Ref<Record<string, Blob | string> | undefined>>,
+  getScope: () => string | undefined,
+) {
   const urls = shallowRef<Record<string, string>>({});
-  watchEffect((cleanup) => {
-    const local: string[] = [];
-    urls.value = Object.fromEntries(
-      Object.entries(data.value ?? {}).map(([id, cover]) => {
-        if (typeof cover === "string") {
-          return [id, cover];
+  let retained: { scope: string; id: string }[] = [];
+  let unshared: string[] = [];
+
+  function release(
+    previousRetained: { scope: string; id: string }[],
+    previousUnshared: string[],
+  ) {
+    for (const { scope, id } of previousRetained) {
+      releaseCoverObjectUrl(scope, id);
+    }
+    for (const url of previousUnshared) {
+      URL.revokeObjectURL(url);
+    }
+  }
+
+  watchEffect(() => {
+    const scope = getScope();
+    const nextRetained: { scope: string; id: string }[] = [];
+    const nextUnshared: string[] = [];
+    const nextUrls: Record<string, string> = {};
+    for (const [id, cover] of Object.entries(data.value ?? {})) {
+      if (typeof cover === "string") {
+        nextUrls[id] = cover;
+        continue;
+      }
+      if (scope) {
+        const url = retainCoverObjectUrl(scope, id, cover);
+        if (url) {
+          nextRetained.push({ scope, id });
+          nextUrls[id] = url;
         }
+      } else {
         const url = URL.createObjectURL(cover);
-        local.push(url);
-        return [id, url];
-      }),
-    );
-    cleanup(() => local.forEach((url) => URL.revokeObjectURL(url)));
+        nextUnshared.push(url);
+        nextUrls[id] = url;
+      }
+    }
+    const previousRetained = retained;
+    const previousUnshared = unshared;
+    retained = nextRetained;
+    unshared = nextUnshared;
+    urls.value = nextUrls;
+    release(previousRetained, previousUnshared);
   });
+
+  onScopeDispose(() => {
+    release(retained, unshared);
+    retained = [];
+    unshared = [];
+  });
+
   return urls;
 }
 
@@ -293,7 +334,7 @@ function useCoverState(ids: () => readonly string[]) {
   const { data } = useQueryState<Record<string, Blob | string>>(() =>
     connectionKey(coverKey(session.userId, coverIds(ids())), app.offline),
   );
-  return useCoverUrls(data);
+  return useCoverUrls(data, () => session.offlineScope);
 }
 
 export function useCoverQuery(ids: () => readonly string[]) {
@@ -313,18 +354,12 @@ export function useCoverQuery(ids: () => readonly string[]) {
       retry: 0,
       staleTime: 60 * 60 * 1000,
       query: async ({ signal }) => {
-        const covers: Record<string, Blob | string> = {};
         const media = scope ? await import("~/utils/offline-media") : undefined;
-        const missing: string[] = [];
-        for (const id of list) {
-          signal.throwIfAborted();
-          const cover = scope && (await media?.readOfflineMedia(scope, "cover", id));
-          if (cover) {
-            covers[id] = cover;
-          } else {
-            missing.push(id);
-          }
-        }
+        signal.throwIfAborted();
+        const covers: Record<string, Blob | string> =
+          scope && media ? await media.readOfflineCovers(scope, list) : {};
+        signal.throwIfAborted();
+        const missing = list.filter((id) => !(id in covers));
         if (offline) {
           return covers;
         }
@@ -351,5 +386,5 @@ export function useCoverQuery(ids: () => readonly string[]) {
       },
     };
   });
-  return { ...query, urls: useCoverUrls(query.data) };
+  return { ...query, urls: useCoverUrls(query.data, () => session.offlineScope) };
 }

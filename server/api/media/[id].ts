@@ -1,9 +1,10 @@
 import { useRuntimeConfig } from "nitropack/runtime";
 import { createError, defineEventHandler, getQuery, getRouterParam, sendNoContent } from "h3";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
+import { session, user } from "../../database/auth-schema";
 import { files } from "../../database/library-schema";
 import { libraryDatabase } from "../../utils/library";
-import { getMediaSession, verifyMedia } from "../../utils/media-access";
+import { verifyMedia } from "../../utils/media-access";
 import { mediaBucket } from "../../utils/media-bucket";
 import { serveMedia } from "../../utils/serve-media";
 
@@ -23,17 +24,22 @@ export default defineEventHandler(async (event) => {
     return sendNoContent(event, 403);
   }
   const db = libraryDatabase(event);
-  const session = await getMediaSession(db, sid);
-  if (!session) {
+  const row = await db
+    .select({
+      userId: user.id,
+      contentType: files.contentType,
+      bytes: files.bytes,
+    })
+    .from(session)
+    .innerJoin(user, eq(user.id, session.userId))
+    .leftJoin(files, and(eq(files.id, id), eq(files.ownerId, user.id), eq(files.state, "ready")))
+    .where(and(eq(session.id, sid), gt(session.expiresAt, new Date()), eq(user.emailVerified, true)))
+    .get();
+  if (!row) {
     return sendNoContent(event, 403);
   }
-  const file = await db
-    .select({ contentType: files.contentType })
-    .from(files)
-    .where(and(eq(files.id, id), eq(files.ownerId, session.userId), eq(files.state, "ready")))
-    .get();
-  if (!file) {
+  if (!row.contentType || !row.bytes) {
     return sendNoContent(event, 404);
   }
-  return serveMedia(event, mediaBucket(event), id, file.contentType);
+  return serveMedia(event, mediaBucket(event), id, row.contentType, row.bytes);
 });

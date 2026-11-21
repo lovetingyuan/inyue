@@ -123,6 +123,7 @@ async function shareApp() {
 
 defineExpose({
   open: () => {
+    buildInfo.value ??= window.__INYUE_BUILD_INFO__;
     activeTab.value = "account";
     shareFeedback.value = undefined;
     showMusicDialog(profile.value);

@@ -3,7 +3,7 @@ export interface MediaBucket {
   get(
     key: string,
     options: { range?: { offset: number; length: number } },
-  ): Promise<{ body: ReadableStream } | null>;
+  ): Promise<{ body: ReadableStream; size: number } | null>;
   put(
     key: string,
     data: Uint8Array,

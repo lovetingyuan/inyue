@@ -7,6 +7,31 @@ import { offlineOwnerHeader } from "~~/shared/offline-library";
 import { responseStatus } from "~/utils/library-error";
 
 const sessionKey = "music-session";
+let nativeToken: string | null | undefined;
+let nativeTokenRead: Promise<string | null> | undefined;
+let nativeTokenVersion = 0;
+
+function readNativeToken() {
+  if (nativeToken !== undefined) {
+    return Promise.resolve(nativeToken);
+  }
+  if (!nativeTokenRead) {
+    const version = nativeTokenVersion;
+    nativeTokenRead = import("@aparajita/capacitor-secure-storage")
+      .then(({ SecureStorage }) => SecureStorage.getItem(sessionKey))
+      .then((value) => {
+        const token = typeof value === "string" && value ? value : null;
+        if (version === nativeTokenVersion) {
+          nativeToken = token;
+        }
+        return token;
+      })
+      .finally(() => {
+        nativeTokenRead = undefined;
+      });
+  }
+  return nativeTokenRead;
+}
 
 export function useMusicApi() {
   const config = useRuntimeConfig().public;
@@ -57,8 +82,7 @@ export function useMusicApi() {
       headers.set("cookie", cookie);
     }
     if (native && !publicRequest) {
-      const { SecureStorage } = await import("@aparajita/capacitor-secure-storage");
-      const token = await SecureStorage.getItem(sessionKey);
+      const token = await readNativeToken();
       if (token) {
         headers.set("authorization", `Bearer ${token}`);
       }
@@ -121,7 +145,15 @@ export function useMusicApi() {
         throw new Error("登录响应缺少会话凭据。");
       }
       const { SecureStorage } = await import("@aparajita/capacitor-secure-storage");
-      await SecureStorage.setItem(sessionKey, token);
+      nativeTokenVersion++;
+      nativeToken = token;
+      try {
+        await SecureStorage.setItem(sessionKey, token);
+      } catch (error) {
+        nativeTokenVersion++;
+        nativeToken = undefined;
+        throw error;
+      }
     }
   }
 
@@ -129,7 +161,15 @@ export function useMusicApi() {
     await request("/api/auth/sign-out", { method: "POST", body: {} });
     if (native) {
       const { SecureStorage } = await import("@aparajita/capacitor-secure-storage");
-      await SecureStorage.removeItem(sessionKey);
+      nativeTokenVersion++;
+      nativeToken = null;
+      try {
+        await SecureStorage.removeItem(sessionKey);
+      } catch (error) {
+        nativeTokenVersion++;
+        nativeToken = undefined;
+        throw error;
+      }
     }
   }
 

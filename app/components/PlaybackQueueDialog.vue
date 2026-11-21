@@ -79,7 +79,7 @@ defineExpose({
           </button>
         </form>
       </div>
-      <ol class="grid content-start overflow-y-auto">
+      <ol v-if="open" class="grid content-start overflow-y-auto">
         <li v-for="item in queue" :key="item.id" class="min-w-0">
           <AsyncButton
             class="btn btn-ghost flex h-auto w-full gap-3 p-2 text-left focus-visible:-outline-offset-2"

@@ -164,6 +164,110 @@ export function readOfflineMedia(scope: string, kind: Kind, id: string) {
   })().catch(() => undefined);
 }
 
+export async function readOfflineCovers(
+  scope: string,
+  ids: readonly string[],
+): Promise<Record<string, Blob | string>> {
+  if (!ids.length) {
+    return {};
+  }
+  if (Capacitor.isNativePlatform()) {
+    try {
+      if (!(await withOfflineStore(scope, "readonly", () => true))) {
+        return {};
+      }
+      const results = await Promise.all(
+        ids.map(async (id) => {
+          const { uri } = await nativeMedia
+            .read({ scope, kind: "cover", id })
+            .catch(() => ({ uri: undefined }));
+          return [id, uri] as const;
+        }),
+      );
+      if (!(await withOfflineStore(scope, "readonly", () => true))) {
+        return {};
+      }
+      const covers: Record<string, string> = {};
+      for (const [id, uri] of results) {
+        if (uri) {
+          covers[id] = uri;
+        }
+      }
+      return covers;
+    } catch {
+      return {};
+    }
+  }
+  try {
+    const [directory, entries] = await Promise.all([
+      (await mediaRoot()).getDirectoryHandle(scope),
+      withOfflineStore(scope, "readonly", (store) =>
+        Promise.all(
+          ids.map(async (id) => {
+            const entry = await idbResult<MediaEntry | undefined>(
+              store.get(mediaKey(scope, `cover-${id}`)),
+            );
+            return [id, entry] as const;
+          }),
+        ),
+      ),
+    ]);
+    if (!entries) {
+      return {};
+    }
+    const now = Date.now();
+    const candidates = entries.filter(
+      (pair): pair is readonly [string, MediaEntry] =>
+        Boolean(pair[1] && now - pair[1].accessedAt < offlineMaxAge),
+    );
+    if (!candidates.length) {
+      return {};
+    }
+    const files = await Promise.all(
+      candidates.map(async ([id, entry]) => {
+        const handle = await directory.getFileHandle(entry.name).catch(() => undefined);
+        const file = await handle?.getFile().catch(() => undefined);
+        if (!file || file.size !== entry.bytes) {
+          return;
+        }
+        return { id, entry, blob: file.slice(0, file.size, entry.type) };
+      }),
+    );
+    const loaded = files.filter((item) => item !== undefined);
+    if (!loaded.length) {
+      return {};
+    }
+    const accessible = await withOfflineStore(scope, "readwrite", async (store) => {
+      const touchedAt = Date.now();
+      const validIds = new Set<string>();
+      await Promise.all(
+        loaded.map(async ({ id, entry }) => {
+          const key = mediaKey(scope, entry.name);
+          const current = await idbResult<MediaEntry | undefined>(store.get(key));
+          if (!current) {
+            return;
+          }
+          store.put({ ...current, accessedAt: touchedAt }, key);
+          validIds.add(id);
+        }),
+      );
+      return validIds;
+    });
+    if (!accessible) {
+      return {};
+    }
+    const covers: Record<string, Blob> = {};
+    for (const { id, blob } of loaded) {
+      if (accessible.has(id)) {
+        covers[id] = blob;
+      }
+    }
+    return covers;
+  } catch {
+    return {};
+  }
+}
+
 export async function readNativeAudioSources(scope: string) {
   try {
     if (await withOfflineStore(scope, "readonly", () => true)) {
@@ -183,18 +287,25 @@ export async function readOfflineAudioIds(scope: string) {
     return new Set(Object.keys(await readNativeAudioSources(scope)));
   }
   try {
-    const directory = await (await mediaRoot()).getDirectoryHandle(scope);
-    const entries = await mediaEntries(scope);
+    const [directory, entries] = await Promise.all([
+      (await mediaRoot()).getDirectoryHandle(scope),
+      mediaEntries(scope),
+    ]);
     const oldest = Date.now() - offlineMaxAge;
+    const candidates = (entries ?? []).filter(
+      ({ name, accessedAt }) => name.startsWith("audio-") && accessedAt > oldest,
+    );
+    const verified = await Promise.all(
+      candidates.map(async ({ name, bytes }) => {
+        const handle = await directory.getFileHandle(name).catch(() => undefined);
+        const file = await handle?.getFile().catch(() => undefined);
+        return file?.size === bytes ? name.slice(6) : undefined;
+      }),
+    );
     const ids = new Set<string>();
-    for (const { name, accessedAt, bytes } of entries ?? []) {
-      if (!name.startsWith("audio-") || accessedAt <= oldest) {
-        continue;
-      }
-      const handle = await directory.getFileHandle(name).catch(() => undefined);
-      const file = await handle?.getFile().catch(() => undefined);
-      if (file?.size === bytes) {
-        ids.add(name.slice(6));
+    for (const id of verified) {
+      if (id) {
+        ids.add(id);
       }
     }
     return ids;

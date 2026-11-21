@@ -35,23 +35,29 @@ export const useSessionStore = defineStore("session", () => {
     // Login awaits refetch(), so the retry must finish before it returns.
     retry: 0,
     query: async ({ signal }) => {
-      const storage = import.meta.client ? await import("~/utils/offline-library") : undefined;
-      const state = await storage?.readOfflineState().catch(() => undefined);
-      signal.throwIfAborted();
+      const offlinePromise = import.meta.client
+        ? import("~/utils/offline-library").then(async (storage) => ({
+            storage,
+            state: await storage.readOfflineState().catch(() => undefined),
+          }))
+        : undefined;
       try {
-        const response = await request<Account>("/api/account", {
-          cache: "no-store",
-          retry: app.offline ? 0 : 1,
-          timeout: 5000,
-          signal,
-        });
+        const [response, offline] = await Promise.all([
+          request<Account>("/api/account", {
+            cache: "no-store",
+            retry: app.offline ? 0 : 1,
+            timeout: 5000,
+            signal,
+          }),
+          offlinePromise,
+        ]);
         const account = response._data ?? null;
         const expiresAt = Number(response.headers.get(offlineExpiryHeader));
         signal.throwIfAborted();
-        if (storage && account) {
+        if (offline && account) {
           const profile = native || expiresAt > Date.now() ? { account, expiresAt } : undefined;
-          const verified = await storage
-            .changeOfflineAccount(state?.revision, profile)
+          const verified = await offline.storage
+            .changeOfflineAccount(offline.state?.revision, profile)
             .catch(() => undefined);
           signal.throwIfAborted();
           offlineState.value = verified?.profile?.account.id === account.id ? verified : undefined;
@@ -65,18 +71,22 @@ export const useSessionStore = defineStore("session", () => {
         return account;
       } catch (cause) {
         signal.throwIfAborted();
+        const offline = await offlinePromise;
+        signal.throwIfAborted();
         const status = responseStatus(cause);
         if (status === 401 || status === 403) {
-          revokedScope = state?.revision;
+          revokedScope = offline?.state?.revision;
           offlineState.value = undefined;
-          await storage?.changeOfflineAccount(state?.revision).catch(() => undefined);
+          await offline?.storage
+            .changeOfflineAccount(offline.state?.revision)
+            .catch(() => undefined);
           return null;
         }
         if (
-          storage &&
+          offline &&
           (status === undefined || status === 502 || status === 503 || status === 504)
         ) {
-          offlineState.value = state?.revision === revokedScope ? undefined : state;
+          offlineState.value = offline.state?.revision === revokedScope ? undefined : offline.state;
           offlineReady.value = true;
           app.offline = true;
         }

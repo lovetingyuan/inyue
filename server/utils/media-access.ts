@@ -4,18 +4,30 @@ import { drizzle } from "drizzle-orm/d1";
 import { session, user } from "../database/auth-schema";
 
 const encoder = new TextEncoder();
+let cachedSecret = "";
+let cachedKey: Promise<CryptoKey> | undefined;
 
-async function mediaKey(secret: string) {
+function mediaKey(secret: string) {
   if (secret.length < 32) {
     throw createError({ statusCode: 503, statusMessage: "Media signing is not configured" });
   }
-  return crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign", "verify"],
-  );
+  if (cachedKey && cachedSecret === secret) {
+    return cachedKey;
+  }
+  cachedSecret = secret;
+  const key = crypto.subtle
+    .importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, [
+      "sign",
+      "verify",
+    ])
+    .catch((error: unknown) => {
+      if (cachedKey === key) {
+        cachedKey = undefined;
+      }
+      throw error;
+    });
+  cachedKey = key;
+  return key;
 }
 
 function payload(id: string, sessionId: string, expires: number) {

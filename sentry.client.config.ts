@@ -1,5 +1,5 @@
 import { Capacitor } from "@capacitor/core";
-import * as Sentry from "@sentry/nuxt";
+import { init } from "@sentry/nuxt";
 import { useRuntimeConfig } from "#app";
 import { sentryDataCollection } from "./shared/sentry-data-collection";
 
@@ -17,15 +17,14 @@ if (!import.meta.dev && dsn) {
     tracePropagationTargets: [/^\/api\//],
     enableLogs: true,
     dataCollection: sentryDataCollection,
-    integrations: [Sentry.replayIntegration()],
     replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: 1,
   };
 
   if (native) {
     const SentryCapacitor = await import("@sentry/capacitor");
-    SentryCapacitor.init(options, Sentry.init);
+    SentryCapacitor.init(options, init);
   } else {
-    Sentry.init(options);
+    init(options);
   }
 }

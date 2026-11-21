@@ -30,6 +30,18 @@ function getGitHash() {
 const buildTime = process.env.VITE_BUILD_TIME || Date.now().toString();
 const buildHash = process.env.VITE_GIT_HASH || getGitHash();
 const sentrySourcemaps = process.env.INYUE_SENTRY_SOURCEMAPS === "1";
+const capacitorApiOrigin = (() => {
+  const value = process.env.NUXT_PUBLIC_MOBILE_API_ORIGIN;
+  if (!value) {
+    return "";
+  }
+  try {
+    const parsed = new URL(value);
+    return parsed.href === `${parsed.origin}/` ? parsed.origin : "";
+  } catch {
+    return "";
+  }
+})();
 
 export default defineNuxtConfig({
   telemetry: false,
@@ -56,6 +68,7 @@ export default defineNuxtConfig({
       script: [
         {
           src: `/build-info.js?time=${buildTime}&hash=${encodeURIComponent(buildHash)}`,
+          defer: true,
         },
       ],
       link: [
@@ -178,6 +191,24 @@ export default defineNuxtConfig({
 
   hooks: {
     ready(nuxt) {
+      nuxt.hook("app:resolve", (app) => {
+        // The app initializes its session and route guards through /api/account, including in the Android WebView.
+        app.plugins = app.plugins.filter(({ src }) => {
+          const path = src.replaceAll("\\", "/");
+          return (
+            !path.includes("/@nuxtjs/better-auth/") ||
+            !/\/session\.(?:client|server)(?:\.js)?$/.test(path)
+          );
+        });
+        app.middleware = app.middleware.filter(({ path }) => {
+          const normalized = path.replaceAll("\\", "/");
+          return (
+            !normalized.includes("/@nuxtjs/better-auth/") ||
+            !/\/auth\.global(?:\.js)?$/.test(normalized)
+          );
+        });
+      });
+
       if (nuxt.options.dev || !nuxt.options.ssr) {
         return;
       }
@@ -194,13 +225,6 @@ export default defineNuxtConfig({
           // The Nuxt PWA module maps 200.html to its Cloudflare asset URL /200.
           options: { precacheFallback: { fallbackURL: "/200" } },
         });
-      });
-    },
-    "app:resolve"(app) {
-      // The app initializes its session through /api/account, including in the Android WebView.
-      app.plugins = app.plugins.filter(({ src }) => {
-        const path = src.replaceAll("\\", "/");
-        return !path.includes("/@nuxtjs/better-auth/") || !/\/session\.client(?:\.js)?$/.test(path);
       });
     },
     listen(server) {
@@ -266,6 +290,15 @@ export default defineNuxtConfig({
   $env: {
     capacitor: {
       ssr: false,
+      ...(capacitorApiOrigin
+        ? {
+            app: {
+              head: {
+                link: [{ rel: "preconnect", href: capacitorApiOrigin, crossorigin: "" }],
+              },
+            },
+          }
+        : {}),
       pwa: {
         disable: process.env.NODE_ENV === "development",
         generateSW: {

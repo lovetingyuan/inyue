@@ -39,7 +39,9 @@ export function useAppSession() {
     }
     nativeOnline = connected;
     if (connected) {
-      if (!session.mounted || app.offline) {
+      if (!session.mounted) {
+        session.mounted = true;
+      } else if (app.offline) {
         void probeNativeApi();
       }
     } else {
@@ -172,7 +174,8 @@ export function useAppSession() {
           networkListeners.push(listener);
         }
       };
-      await Promise.all([
+      const [status] = await Promise.all([
+        Network.getStatus().catch(() => undefined),
         Network.addListener("networkStatusChange", ({ connected }) => {
           statusRevision++;
           setNativeConnection(connected);
@@ -183,8 +186,8 @@ export function useAppSession() {
           }
         }).then(add),
       ]);
-      if (!disposed) {
-        await refreshStatus();
+      if (!disposed && statusRevision === 0) {
+        setNativeConnection(status?.connected ?? online.value);
       }
     } catch {
       if (!disposed && !session.mounted) {
@@ -195,15 +198,24 @@ export function useAppSession() {
   });
   watch(
     () => session.offlineScope,
-    async (scope) => {
+    (scope, _, onCleanup) => {
       if (!scope) {
         return;
       }
-      const [{ pruneOfflineMetadata }, { pruneOfflineMedia }] = await Promise.all([
-        import("~/utils/offline-library"),
-        import("~/utils/offline-media"),
-      ]);
-      void Promise.allSettled([pruneOfflineMetadata(scope), pruneOfflineMedia(scope)]);
+      const timer = setTimeout(() => {
+        if (disposed || scope !== session.offlineScope) {
+          return;
+        }
+        void Promise.all([
+          import("~/utils/offline-library"),
+          import("~/utils/offline-media"),
+        ]).then(([{ pruneOfflineMetadata }, { pruneOfflineMedia }]) => {
+          if (!disposed && scope === session.offlineScope) {
+            void Promise.allSettled([pruneOfflineMetadata(scope), pruneOfflineMedia(scope)]);
+          }
+        });
+      }, 3000);
+      onCleanup(() => clearTimeout(timer));
     },
   );
   onBeforeUnmount(() => {

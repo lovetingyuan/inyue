@@ -28,17 +28,12 @@ export default defineEventHandler(async (event) => {
         filter && filter !== "default" ? eq(memberships.playlistId, filter) : undefined,
       ),
     );
-  if (
-    filter &&
-    filter !== "default" &&
-    !(await db
-      .select({ id: playlists.id })
-      .from(playlists)
-      .where(and(eq(playlists.id, filter), eq(playlists.ownerId, user.id)))
-      .get())
-  ) {
-    throw createError({ statusCode: 404, statusMessage: "PLAYLIST_NOT_FOUND" });
-  }
+  const checkPlaylist = Boolean(filter && filter !== "default");
+  const playlistQuery = db
+    .select({ id: playlists.id })
+    .from(playlists)
+    .where(and(eq(playlists.id, filter), eq(playlists.ownerId, user.id)))
+    .limit(1);
   const where = and(
     eq(songs.ownerId, user.id),
     term
@@ -52,34 +47,60 @@ export default defineEventHandler(async (event) => {
   );
   const order = [desc(songs.createdAt), desc(songs.id)];
   if (query.ids === "true") {
-    const ids = await db
+    const idsQuery = db
       .select({ id: songs.id })
       .from(songs)
       .where(where)
-      .orderBy(...order)
-      .all();
+      .orderBy(...order);
+    let ids: { id: string }[];
+    if (checkPlaylist) {
+      const [found, rows] = await db.batch([playlistQuery, idsQuery]);
+      if (!found.length) {
+        throw createError({ statusCode: 404, statusMessage: "PLAYLIST_NOT_FOUND" });
+      }
+      ids = rows;
+    } else {
+      ids = await idsQuery.all();
+    }
     return { ids: ids.map(({ id }) => id), items: [], nextOffset: null };
   }
-  const page = await db
+  const pageQuery = db
     .select(songFields)
     .from(songs)
     .where(where)
     .orderBy(...order)
     .limit(51)
-    .offset(offset)
-    .all();
+    .offset(offset);
+  let page;
+  if (checkPlaylist) {
+    const [found, rows] = await db.batch([playlistQuery, pageQuery]);
+    if (!found.length) {
+      throw createError({ statusCode: 404, statusMessage: "PLAYLIST_NOT_FOUND" });
+    }
+    page = rows;
+  } else {
+    page = await pageQuery.all();
+  }
   const nextOffset = page.length > 50 ? offset + 50 : null;
-  const total =
-    term && offset === 0
-      ? nextOffset === null
-        ? page.length
-        : await db.$count(songs, where)
-      : undefined;
   const items = page.slice(0, 50);
   const bySong = new Map<string, SongDetails>(
     items.map((song) => [song.id, { ...song, playlistIds: [] }]),
   );
-  if (items.length) {
+  const needsCount = Boolean(term && offset === 0 && nextOffset !== null);
+  let total = term && offset === 0 && nextOffset === null ? page.length : undefined;
+  if (items.length && needsCount) {
+    const [countRows, rows] = await db.batch([
+      db.select({ count: sql<number>`count(*)` }).from(songs).where(where),
+      db
+        .select({ songId: memberships.songId, playlistId: memberships.playlistId })
+        .from(memberships)
+        .where(and(eq(memberships.ownerId, user.id), inArray(memberships.songId, [...bySong.keys()]))),
+    ]);
+    total = Number(countRows[0]?.count ?? 0);
+    for (const row of rows) {
+      bySong.get(row.songId)?.playlistIds.push(row.playlistId);
+    }
+  } else if (items.length) {
     const rows = await db
       .select({ songId: memberships.songId, playlistId: memberships.playlistId })
       .from(memberships)

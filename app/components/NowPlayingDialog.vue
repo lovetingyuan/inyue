@@ -4,15 +4,15 @@ import AsyncButton from "~/components/AsyncButton.vue";
 import { usePlayerStore } from "~/stores/player";
 import PlaybackSlider from "~/components/PlaybackSlider.vue";
 import PlaybackProgress from "~/components/PlaybackProgress.vue";
-import MusicLyrics from "~/components/MusicLyrics.vue";
 import MusicArtwork from "~/components/MusicArtwork.vue";
-import { computed, ref, useTemplateRef, watch } from "vue";
+import { computed, defineAsyncComponent, ref, useTemplateRef, watch } from "vue";
 import { ChevronDown, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { Component } from "vue";
 import { parseLrc } from "~~/shared/lrc";
 
 defineOptions({ name: "NowPlayingDialog" });
+const MusicLyrics = defineAsyncComponent(() => import("~/components/MusicLyrics.vue"));
 defineProps<{
   shortcutsEnabled: boolean;
   refreshingQueue: boolean;
@@ -93,11 +93,14 @@ defineExpose({
           正在播放
         </h2>
       </header>
-      <div v-if="track" class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-2.5 sm:px-8">
+      <div
+        v-if="dialogOpen && track"
+        class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-2.5 sm:px-8"
+      >
         <div class="m-auto grid w-full max-w-sm shrink-0 gap-[clamp(0.875rem,2.2dvh,1.375rem)]">
           <div class="relative grid place-items-center">
             <MusicArtwork
-              :src="track.coverUrl"
+              :src="dialogOpen ? track.coverUrl : undefined"
               class="ml-0! w-full max-w-[min(18rem,42dvh)] rounded-[1.5rem]! shadow-xl shadow-base-content/15 ring-1 ring-base-content/8 sm:max-w-[min(16.5rem,36dvh)]"
               :class="{ invisible: hasLyrics && showLyrics }"
               :aria-hidden="(hasLyrics && showLyrics) || undefined"
