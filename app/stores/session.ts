@@ -61,6 +61,9 @@ export const useSessionStore = defineStore("session", () => {
             .catch(() => undefined);
           signal.throwIfAborted();
           offlineState.value = verified?.profile?.account.id === account.id ? verified : undefined;
+          if (offlineState.value) {
+            offlineReady.value = true;
+          }
           if (offlineState.value?.revision !== revokedScope) {
             revokedScope = undefined;
           }
