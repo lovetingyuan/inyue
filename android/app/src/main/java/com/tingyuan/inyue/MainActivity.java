@@ -18,6 +18,7 @@ import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.webkit.RenderProcessGoneDetail;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.ImageView;
 import androidx.core.content.ContextCompat;
@@ -215,6 +216,10 @@ public class MainActivity extends BridgeActivity {
         if (webView == null) {
             return;
         }
+        WebSettings settings = webView.getSettings();
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // Keep the renderer bound to the app process instead of waiving it immediately in background.
             webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_BOUND, false);

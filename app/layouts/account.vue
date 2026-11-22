@@ -17,10 +17,7 @@ const showOfflineFallback = computed(
 </script>
 
 <template>
-  <main
-    class="app-height grid overflow-y-auto md:grid-cols-[minmax(0,1fr)_minmax(26rem,0.8fr)]"
-    :class="{ 'select-none': app.native }"
-  >
+  <main class="app-height grid overflow-y-auto md:grid-cols-[minmax(0,1fr)_minmax(26rem,0.8fr)]">
     <div
       class="hidden place-items-center overflow-hidden bg-neutral p-10 text-neutral-content md:grid"
       aria-hidden="true"

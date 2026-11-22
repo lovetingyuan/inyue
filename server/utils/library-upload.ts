@@ -42,6 +42,33 @@ export function formText(
   return value || null;
 }
 
+const pngSignature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
+const ihdrSignature = [0x49, 0x48, 0x44, 0x52] as const;
+
+function hasBytesAt(data: Uint8Array, offset: number, expected: readonly number[]) {
+  return expected.every((byte, index) => data[offset + index] === byte);
+}
+
+function asciiAt(data: Uint8Array, start: number, end: number) {
+  let result = "";
+  for (let index = start; index < end; index++) {
+    result += String.fromCharCode(data[index] ?? 0);
+  }
+  return result;
+}
+
+export function detectCoverContentType(data: Uint8Array) {
+  const jpeg = data.length > 8 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
+  const png =
+    data.length >= 33 && hasBytesAt(data, 0, pngSignature) && hasBytesAt(data, 12, ihdrSignature);
+  const webp =
+    data.length >= 20 &&
+    asciiAt(data, 0, 4) === "RIFF" &&
+    asciiAt(data, 8, 12) === "WEBP" &&
+    ["VP8 ", "VP8L", "VP8X"].includes(asciiAt(data, 12, 16));
+  return jpeg ? "image/jpeg" : png ? "image/png" : webp ? "image/webp" : null;
+}
+
 export function coverUpload(part?: MultiPartData) {
   if (!part) {
     return null;
@@ -50,17 +77,7 @@ export function coverUpload(part?: MultiPartData) {
   if (data.length > coverMaxBytes) {
     throw createError({ statusCode: 413, statusMessage: "COVER_SIZE" });
   }
-  const jpeg = data.length > 8 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
-  const png =
-    data.length >= 33 &&
-    data.subarray(0, 8).toString("hex") === "89504e470d0a1a0a" &&
-    data.subarray(12, 16).toString() === "IHDR";
-  const webp =
-    data.length >= 20 &&
-    data.subarray(0, 4).toString() === "RIFF" &&
-    data.subarray(8, 12).toString() === "WEBP" &&
-    ["VP8 ", "VP8L", "VP8X"].includes(data.subarray(12, 16).toString());
-  const contentType = jpeg ? "image/jpeg" : png ? "image/png" : webp ? "image/webp" : null;
+  const contentType = detectCoverContentType(data);
   if (!part.filename || !contentType) {
     throw createError({ statusCode: 415, statusMessage: "UNSUPPORTED_COVER" });
   }

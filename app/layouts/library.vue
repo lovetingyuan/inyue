@@ -94,7 +94,6 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
   <div
     ref="drawerRoot"
     class="drawer app-height mx-auto max-w-[100rem] grid-rows-[minmax(0,1fr)] md:drawer-open"
-    :class="{ 'select-none': app.native }"
   >
     <input
       id="music-drawer"

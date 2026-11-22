@@ -263,6 +263,9 @@ export default defineNuxtConfig({
     libraryQuotaBytes: defaultQuotaBytes,
     integrationPlayback: false,
     googleClientSecret: "",
+    deepseekApiKey: "",
+    deepseekBaseUrl: "https://api.deepseek.com",
+    deepseekModel: "deepseek-chat",
     public: {
       sentryWebDsn: "",
       sentryAndroidDsn: "",

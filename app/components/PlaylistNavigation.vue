@@ -33,7 +33,11 @@ async function select(id: string) {
     <button
       type="button"
       class="btn btn-ghost mx-3 shrink-0 justify-start gap-3 border-transparent px-3 font-medium"
-      :class="selected === '' ? 'bg-primary/10 text-primary' : 'hover:bg-base-content/5'"
+      :class="
+        selected === ''
+          ? 'bg-primary/10 text-primary'
+          : 'hover:bg-base-content/5 active:bg-base-content/10'
+      "
       :aria-current="selected === '' ? 'true' : undefined"
       @click="select('')"
     >
@@ -59,7 +63,11 @@ async function select(id: string) {
       <button
         type="button"
         class="btn btn-ghost justify-start gap-3 border-transparent px-3 font-medium"
-        :class="selected === 'default' ? 'bg-primary/10 text-primary' : 'hover:bg-base-content/5'"
+        :class="
+          selected === 'default'
+            ? 'bg-primary/10 text-primary'
+            : 'hover:bg-base-content/5 active:bg-base-content/10'
+        "
         :aria-current="selected === 'default' ? 'true' : undefined"
         @click="select('default')"
       >
@@ -69,8 +77,12 @@ async function select(id: string) {
       <div
         v-for="item in playlists"
         :key="item.id"
-        class="flex items-center rounded-field"
-        :class="selected === item.id ? 'bg-primary/10 text-primary' : 'hover:bg-base-content/5'"
+        class="flex items-center rounded-field transition-colors duration-200 pointer-coarse:duration-100"
+        :class="
+          selected === item.id
+            ? 'bg-primary/10 text-primary'
+            : 'hover:bg-base-content/5 has-[>:first-child:active]:bg-base-content/10 has-[>:first-child:active]:duration-0'
+        "
       >
         <button
           type="button"
@@ -86,7 +98,7 @@ async function select(id: string) {
         </button>
         <button
           type="button"
-          class="btn btn-ghost btn-circle btn-sm mr-1 border-transparent bg-transparent text-current hover:text-primary"
+          class="btn btn-ghost btn-circle btn-sm mr-1 border-transparent bg-transparent text-current hover:text-primary active:bg-base-content/10"
           v-if="!app.offline"
           :aria-label="`编辑${item.name}`"
           @click="emit('edit', item)"

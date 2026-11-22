@@ -3,11 +3,16 @@ import { libraryFormError } from "~/utils/library-error";
 import { useAppStore } from "~/stores/app";
 import { useSongSave } from "~/composables/useLibraryMutations";
 import MusicArtwork from "~/components/MusicArtwork.vue";
+import SongMetadataLookup from "~/components/SongMetadataLookup.vue";
 import { computed, reactive, ref, shallowRef, useId, useTemplateRef, watch } from "vue";
 import { ClipboardPaste, FileText, Image, Music, Plus, X } from "@lucide/vue";
 import { Capacitor } from "@capacitor/core";
 import { useObjectUrl } from "@vueuse/core";
 import type { Song } from "~~/shared/types/library";
+import type {
+  SongMetadataCandidate,
+  SongMetadataEnrichResult,
+} from "~~/shared/types/song-metadata";
 import { decodeLrcBytes, parseLrc } from "~~/shared/lrc";
 import { audioMaxBytes, coverMaxBytes, lyricsMaxBytes } from "~~/shared/library-limits";
 
@@ -41,12 +46,21 @@ const hasLyrics = computed(() =>
 const oversizedCover = ref(false);
 const reading = ref(false);
 const readingLyrics = ref(false);
-const pasting = ref(false);
+const pastingCover = ref(false);
+const pastingLyrics = ref(false);
+const lookupBusy = ref(false);
+const metadataFilled = ref(false);
 const busy = saveSong.isLoading;
 const app = useAppStore();
 const formDisabled = computed(() => busy.value || app.offline);
 const mediaBusy = computed(
-  () => formDisabled.value || reading.value || readingLyrics.value || pasting.value,
+  () =>
+    formDisabled.value ||
+    reading.value ||
+    readingLyrics.value ||
+    pastingCover.value ||
+    pastingLyrics.value ||
+    lookupBusy.value,
 );
 const error = ref("");
 const fieldId = useId();
@@ -54,7 +68,14 @@ const fieldErrors = reactive<
   Partial<Record<keyof typeof form | "audio" | "cover" | "lyrics", string>>
 >({});
 const audioNotice = ref("");
-const pasteNotice = ref("");
+const coverPasteNotice = ref("");
+const lyricsPasteNotice = ref("");
+const lookupStatus = ref<{ tone: "info" | "error"; message: string } | null>(null);
+const fillEmptyOnly = computed(() => Boolean(props.song));
+const lookupNeedCover = computed(() => !fillEmptyOnly.value || !hasCover.value);
+const lookupNeedLyrics = computed(() => !fillEmptyOnly.value || !hasLyrics.value);
+const lookupNeedCredits = computed(() => !fillEmptyOnly.value || !form.lyricist || !form.composer);
+const lookupNeedDescription = computed(() => !fillEmptyOnly.value || !form.description);
 const coverTypes = ["image/jpeg", "image/png", "image/webp"];
 const coverError = computed(() =>
   oversizedCover.value ? "封面超过 1 MiB，请移除或重新选择。" : fieldErrors.cover,
@@ -73,12 +94,15 @@ async function selectAudio(event: Event) {
     return;
   }
   const file = event.target instanceof HTMLInputElement ? event.target.files?.[0] : undefined;
+  const preserveFilled = metadataFilled.value;
   audio.value = undefined;
-  cover.value = undefined;
-  oversizedCover.value = false;
+  if (!preserveFilled) {
+    cover.value = undefined;
+    oversizedCover.value = false;
+    fieldErrors.cover = "";
+    coverPasteNotice.value = "";
+  }
   fieldErrors.audio = "";
-  fieldErrors.cover = "";
-  pasteNotice.value = "";
   audioNotice.value = "";
   error.value = "";
   if (!file) {
@@ -92,36 +116,52 @@ async function selectAudio(event: Event) {
     return;
   }
   audio.value = file;
-  for (const { name } of fields) {
-    fieldErrors[name] = "";
+  if (!preserveFilled) {
+    for (const { name } of fields) {
+      fieldErrors[name] = "";
+    }
+    fieldErrors.description = "";
+    form.artist = "";
+    form.album = "";
+    form.year = "";
+    form.lyricist = "";
+    form.composer = "";
+    form.description = "";
+    form.title = file.name.replace(/\.mp3$/i, "");
+  } else if (!form.title) {
+    form.title = file.name.replace(/\.mp3$/i, "");
   }
-  fieldErrors.description = "";
-  form.artist = "";
-  form.album = "";
-  form.year = "";
-  form.lyricist = "";
-  form.composer = "";
-  form.description = "";
-  form.title = file.name.replace(/\.mp3$/i, "");
   reading.value = true;
   try {
     const { parseBlob, selectCover } = await import("music-metadata");
     const { common, native } = await parseBlob(file);
-    form.title = common.title || form.title;
-    form.artist = common.artist || "";
-    form.album = common.album || "";
-    form.year = common.year?.toString() || "";
-    form.composer = common.composer?.join("、") || "";
-    form.description = common.comment?.[0]?.text || "";
+    let parsedLyricist = "";
     for (const tags of Object.values(native)) {
       const value: unknown = tags.find((tag) => tag.id === "TEXT" || tag.id === "TXT")?.value;
       if (typeof value === "string") {
-        form.lyricist = value;
+        parsedLyricist = value;
         break;
       }
     }
+    if (!preserveFilled) {
+      form.title = common.title || form.title;
+      form.artist = common.artist || "";
+      form.album = common.album || "";
+      form.year = common.year?.toString() || "";
+      form.composer = common.composer?.join("、") || "";
+      form.description = common.comment?.[0]?.text || "";
+      form.lyricist = parsedLyricist;
+    } else {
+      form.title ||= common.title || "";
+      form.artist ||= common.artist || "";
+      form.album ||= common.album || "";
+      form.year ||= common.year?.toString() || "";
+      form.composer ||= common.composer?.join("、") || "";
+      form.description ||= common.comment?.[0]?.text || "";
+      form.lyricist ||= parsedLyricist;
+    }
     const embedded = selectCover(common.picture);
-    if (embedded) {
+    if (embedded && (!preserveFilled || !hasCover.value)) {
       oversizedCover.value = embedded.data.byteLength > coverMaxBytes;
       if (!oversizedCover.value) {
         cover.value = new File([new Uint8Array(embedded.data)], "embedded-cover", {
@@ -130,9 +170,78 @@ async function selectAudio(event: Event) {
       }
     }
   } catch {
-    audioNotice.value = "无法读取 ID3，可以手动填写资料。";
+    if (!preserveFilled) {
+      audioNotice.value = "无法读取 ID3，可以手动填写资料。";
+    }
   } finally {
     reading.value = false;
+  }
+}
+
+function setLookupBusy(value: boolean) {
+  lookupBusy.value = value;
+  if (value) {
+    lookupStatus.value = null;
+  }
+}
+
+function applyMetadata({
+  candidate,
+  enriched,
+  cover: fetchedCover,
+}: {
+  candidate: SongMetadataCandidate;
+  enriched: SongMetadataEnrichResult;
+  cover?: File;
+}) {
+  const overwrite = !fillEmptyOnly.value;
+  const filledParts: string[] = [];
+  let textFilled = false;
+
+  function assignField(name: keyof typeof form, value: string | null | undefined) {
+    const next = value?.trim() ?? "";
+    if (!next) {
+      return;
+    }
+    if (overwrite || !form[name]) {
+      form[name] = next;
+      fieldErrors[name] = "";
+      textFilled = true;
+    }
+  }
+
+  assignField("title", candidate.title);
+  assignField("artist", candidate.artist);
+  assignField("album", candidate.album);
+  assignField("year", candidate.year?.toString());
+  assignField("lyricist", enriched.lyricist);
+  assignField("composer", enriched.composer);
+  assignField("description", enriched.description);
+  if (textFilled) {
+    filledParts.push("资料");
+  }
+
+  if (fetchedCover && (overwrite || !hasCover.value)) {
+    setCover(fetchedCover);
+    filledParts.push("封面");
+  }
+
+  if (enriched.lyrics && (overwrite || !hasLyrics.value) && parseLrc(enriched.lyrics).length) {
+    const safeTitle = candidate.title.replace(/[\\/:*?"<>|]+/g, "").slice(0, 60) || "lyrics";
+    const file = new File([enriched.lyrics], `${safeTitle}.lrc`, {
+      type: "text/plain;charset=utf-8",
+    });
+    if (file.size <= lyricsMaxBytes) {
+      setLyrics(file);
+      filledParts.push("歌词");
+    }
+  }
+
+  if (filledParts.length) {
+    metadataFilled.value = true;
+    lookupStatus.value = { tone: "info", message: `已填充${filledParts.join("、")}。` };
+  } else {
+    lookupStatus.value = { tone: "info", message: "当前字段均已有内容，无需补全。" };
   }
 }
 
@@ -151,7 +260,7 @@ function setCover(file: File | undefined) {
   cover.value = file;
   oversizedCover.value = (file?.size ?? 0) > coverMaxBytes;
   fieldErrors.cover = "";
-  pasteNotice.value = "";
+  coverPasteNotice.value = "";
   removeCover.value = false;
 }
 
@@ -159,8 +268,8 @@ async function pasteCover() {
   if (mediaBusy.value) {
     return;
   }
-  pasting.value = true;
-  pasteNotice.value = "";
+  pastingCover.value = true;
+  coverPasteNotice.value = "";
   try {
     let image: Blob | undefined;
     if (Capacitor.isNativePlatform()) {
@@ -171,7 +280,7 @@ async function pasteCover() {
       }
     } else {
       if (!navigator.clipboard?.read) {
-        pasteNotice.value = "当前浏览器无法读取剪贴板图片。";
+        coverPasteNotice.value = "当前浏览器无法读取剪贴板图片。";
         return;
       }
       for (const item of await navigator.clipboard.read()) {
@@ -183,31 +292,106 @@ async function pasteCover() {
       }
     }
     if (!image?.size || !coverTypes.includes(image.type)) {
-      pasteNotice.value = "剪贴板中没有可用的封面图片。";
+      coverPasteNotice.value = "剪贴板中没有可用的封面图片。";
       return;
     }
     if (image.size > coverMaxBytes) {
-      pasteNotice.value = "剪贴板图片超过 1 MiB。";
+      coverPasteNotice.value = "剪贴板图片超过 1 MiB。";
       return;
     }
     const extension = image.type.slice("image/".length);
     setCover(new File([image], `剪贴板封面.${extension}`, { type: image.type }));
   } catch (cause) {
     if (cause instanceof DOMException && cause.name === "NotAllowedError") {
-      pasteNotice.value = "未获得读取剪贴板的权限。";
+      coverPasteNotice.value = "未获得读取剪贴板的权限。";
     } else if (cause instanceof Error && "code" in cause && cause.code === "EMPTY_CLIPBOARD") {
-      pasteNotice.value = "剪贴板中没有可用的封面图片。";
+      coverPasteNotice.value = "剪贴板中没有可用的封面图片。";
     } else {
-      pasteNotice.value = "无法读取剪贴板图片。";
+      coverPasteNotice.value = "无法读取剪贴板图片。";
     }
   } finally {
-    pasting.value = false;
+    pastingCover.value = false;
   }
 }
 
 function clearCover() {
   setCover(undefined);
   removeCover.value = true;
+}
+
+const htmlBlockTags = new Set([
+  "ADDRESS",
+  "ARTICLE",
+  "ASIDE",
+  "BLOCKQUOTE",
+  "DD",
+  "DIV",
+  "DL",
+  "DT",
+  "FIGCAPTION",
+  "FIGURE",
+  "FOOTER",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+  "HEADER",
+  "HR",
+  "LI",
+  "MAIN",
+  "NAV",
+  "OL",
+  "P",
+  "PRE",
+  "SECTION",
+  "TABLE",
+  "TR",
+  "UL",
+]);
+
+function htmlToPlainText(html: string): string {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  let result = "";
+  function walk(node: Node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      result += node.textContent ?? "";
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return;
+    }
+    const tag = node.nodeName.toUpperCase();
+    if (tag === "SCRIPT" || tag === "STYLE") {
+      return;
+    }
+    if (tag === "BR") {
+      result += "\n";
+      return;
+    }
+    const isBlock = htmlBlockTags.has(tag);
+    if (isBlock && result && !result.endsWith("\n")) {
+      result += "\n";
+    }
+    for (const child of node.childNodes) {
+      walk(child);
+    }
+    if (isBlock && result && !result.endsWith("\n")) {
+      result += "\n";
+    }
+  }
+  if (doc.body) {
+    walk(doc.body);
+  }
+  return result;
+}
+
+function setLyrics(file: File | undefined) {
+  lyrics.value = file;
+  fieldErrors.lyrics = "";
+  lyricsPasteNotice.value = "";
+  removeLyrics.value = false;
 }
 
 async function selectLyricsFile(event: Event) {
@@ -220,6 +404,7 @@ async function selectLyricsFile(event: Event) {
     return;
   }
   fieldErrors.lyrics = "";
+  lyricsPasteNotice.value = "";
   if (file.size > lyricsMaxBytes) {
     lyrics.value = undefined;
     fieldErrors.lyrics = "歌词文件不能超过 64 KiB。";
@@ -234,8 +419,7 @@ async function selectLyricsFile(event: Event) {
       fieldErrors.lyrics = "请选择包含时间轴的有效 LRC 歌词文件。";
       return;
     }
-    lyrics.value = file;
-    removeLyrics.value = false;
+    setLyrics(file);
   } catch {
     lyrics.value = undefined;
     fieldErrors.lyrics = "无法读取歌词文件。";
@@ -244,9 +428,64 @@ async function selectLyricsFile(event: Event) {
   }
 }
 
+async function pasteLyrics() {
+  if (mediaBusy.value) {
+    return;
+  }
+  pastingLyrics.value = true;
+  lyricsPasteNotice.value = "";
+  try {
+    let rawText: string | undefined;
+    if (Capacitor.isNativePlatform()) {
+      const { Clipboard, ClipboardContentType } = await import("@capawesome/capacitor-clipboard");
+      const { type, value } = await Clipboard.read();
+      if (type === ClipboardContentType.Text) {
+        rawText = value;
+      } else if (type === ClipboardContentType.Html) {
+        rawText = htmlToPlainText(value);
+      }
+    } else {
+      if (!navigator.clipboard?.readText) {
+        lyricsPasteNotice.value = "当前浏览器无法读取剪贴板文本。";
+        return;
+      }
+      rawText = await navigator.clipboard.readText();
+    }
+    const normalized = rawText
+      ?.replace(/^\uFEFF/, "")
+      .replace(/\r\n?/g, "\n")
+      .trim();
+    if (!normalized) {
+      lyricsPasteNotice.value = "剪贴板中没有可用的 LRC 歌词。";
+      return;
+    }
+    const file = new File([normalized], "剪贴板歌词.lrc", {
+      type: "text/plain;charset=utf-8",
+    });
+    if (file.size > lyricsMaxBytes) {
+      lyricsPasteNotice.value = "剪贴板歌词超过 64 KiB。";
+      return;
+    }
+    if (normalized.includes("\0") || !parseLrc(normalized).length) {
+      lyricsPasteNotice.value = "剪贴板内容不是包含时间轴的有效 LRC 歌词。";
+      return;
+    }
+    setLyrics(file);
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === "NotAllowedError") {
+      lyricsPasteNotice.value = "未获得读取剪贴板的权限。";
+    } else if (cause instanceof Error && "code" in cause && cause.code === "EMPTY_CLIPBOARD") {
+      lyricsPasteNotice.value = "剪贴板中没有可用的 LRC 歌词。";
+    } else {
+      lyricsPasteNotice.value = "无法读取剪贴板歌词。";
+    }
+  } finally {
+    pastingLyrics.value = false;
+  }
+}
+
 function clearLyrics() {
-  lyrics.value = undefined;
-  fieldErrors.lyrics = "";
+  setLyrics(undefined);
   removeLyrics.value = true;
 }
 
@@ -457,10 +696,14 @@ defineExpose({ busy });
               aria-label="粘贴封面"
               title="粘贴封面"
               :disabled="mediaBusy"
-              :aria-busy="pasting"
+              :aria-busy="pastingCover"
               @click="pasteCover"
             >
-              <span v-if="pasting" class="loading loading-spinner loading-xs" aria-hidden="true" />
+              <span
+                v-if="pastingCover"
+                class="loading loading-spinner loading-xs"
+                aria-hidden="true"
+              />
               <ClipboardPaste
                 v-else
                 class="size-4 shrink-0"
@@ -488,8 +731,8 @@ defineExpose({ busy });
           >
             {{ coverError }}
           </p>
-          <p v-if="pasteNotice" class="mt-1 text-xs text-error" role="status">
-            {{ pasteNotice }}
+          <p v-if="coverPasteNotice" class="mt-1 text-xs text-error" role="status">
+            {{ coverPasteNotice }}
           </p>
         </div>
         <div class="min-w-0" :class="{ 'sm:col-span-2': !song }">
@@ -545,6 +788,27 @@ defineExpose({ busy });
               />
             </button>
             <button
+              class="btn btn-ghost btn-circle mr-1 size-11 shrink-0 hover:shadow-none"
+              type="button"
+              aria-label="粘贴歌词"
+              title="粘贴歌词"
+              :disabled="mediaBusy"
+              :aria-busy="pastingLyrics"
+              @click="pasteLyrics"
+            >
+              <span
+                v-if="pastingLyrics"
+                class="loading loading-spinner loading-xs"
+                aria-hidden="true"
+              />
+              <ClipboardPaste
+                v-else
+                class="size-4 shrink-0"
+                :stroke-width="1.8"
+                aria-hidden="true"
+              />
+            </button>
+            <button
               v-if="hasLyrics || fieldErrors.lyrics"
               class="btn btn-ghost btn-circle mr-1 size-11 shrink-0 hover:bg-transparent hover:text-error hover:shadow-none"
               type="button"
@@ -566,6 +830,9 @@ defineExpose({ busy });
           >
             {{ fieldErrors.lyrics }}
           </p>
+          <p v-if="lyricsPasteNotice" class="mt-1 text-xs text-error" role="status">
+            {{ lyricsPasteNotice }}
+          </p>
         </div>
       </div>
       <div class="grid grid-cols-2 gap-3">
@@ -586,7 +853,7 @@ defineExpose({ busy });
             :required="field.name === 'title' || field.name === 'artist'"
             :maxlength="field.name === 'year' ? 4 : 250"
             :inputmode="field.name === 'year' ? 'numeric' : 'text'"
-            :disabled="reading"
+            :disabled="reading || lookupBusy"
             :aria-invalid="!!fieldErrors[field.name]"
             :aria-describedby="
               fieldErrors[field.name] ? `${fieldId}-${field.name}-error` : undefined
@@ -610,7 +877,7 @@ defineExpose({ busy });
           v-model.trim="form.description"
           class="textarea validator w-full"
           maxlength="4000"
-          :disabled="reading"
+          :disabled="reading || lookupBusy"
           :aria-invalid="!!fieldErrors.description"
           :aria-describedby="fieldErrors.description ? `${fieldId}-description-error` : undefined"
           @input="fieldErrors.description = ''"
@@ -626,7 +893,27 @@ defineExpose({ busy });
       </div>
     </fieldset>
     <p v-if="error" role="alert" class="text-error">{{ error }}</p>
-    <div class="flex justify-end gap-2">
+    <p
+      v-else-if="lookupStatus"
+      :role="lookupStatus.tone === 'error' ? 'alert' : 'status'"
+      class="text-xs"
+      :class="lookupStatus.tone === 'error' ? 'text-error' : 'text-primary'"
+    >
+      {{ lookupStatus.message }}
+    </p>
+    <div class="flex items-center justify-end gap-2">
+      <SongMetadataLookup
+        :title="form.title"
+        :artist="form.artist"
+        :disabled="formDisabled || reading || readingLyrics || pastingCover || pastingLyrics"
+        :need-cover="lookupNeedCover"
+        :need-lyrics="lookupNeedLyrics"
+        :need-credits="lookupNeedCredits"
+        :need-description="lookupNeedDescription"
+        @busy-change="setLookupBusy"
+        @status="lookupStatus = $event"
+        @apply="applyMetadata"
+      />
       <button class="btn btn-ghost" type="button" :disabled="busy" @click="emit('cancel')">
         取消
       </button>
