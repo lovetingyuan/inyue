@@ -9,7 +9,7 @@ import { requireAccountSession } from "~~/server/utils/account-session";
 import { coverMaxBytes } from "~~/shared/library-limits";
 import { offlineOwnerHeader } from "~~/shared/offline-library";
 import { detectCoverContentType } from "../../../utils/library-upload";
-import { isAllowedCoverUrl } from "../../../utils/song-metadata";
+import { isAllowedCoverUrl } from "~~/shared/song-metadata";
 
 async function readBoundedBytes(response: Response, maxBytes: number): Promise<Uint8Array | null> {
   const declared = Number(response.headers.get("content-length"));

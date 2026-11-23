@@ -195,8 +195,7 @@ function applyMetadata({
   cover?: File;
 }) {
   const overwrite = !fillEmptyOnly.value;
-  const filledParts: string[] = [];
-  let textFilled = false;
+  let filled = false;
 
   function assignField(name: keyof typeof form, value: string | null | undefined) {
     const next = value?.trim() ?? "";
@@ -206,7 +205,7 @@ function applyMetadata({
     if (overwrite || !form[name]) {
       form[name] = next;
       fieldErrors[name] = "";
-      textFilled = true;
+      filled = true;
     }
   }
 
@@ -217,13 +216,10 @@ function applyMetadata({
   assignField("lyricist", enriched.lyricist);
   assignField("composer", enriched.composer);
   assignField("description", enriched.description);
-  if (textFilled) {
-    filledParts.push("资料");
-  }
 
   if (fetchedCover && (overwrite || !hasCover.value)) {
     setCover(fetchedCover);
-    filledParts.push("封面");
+    filled = true;
   }
 
   if (enriched.lyrics && (overwrite || !hasLyrics.value) && parseLrc(enriched.lyrics).length) {
@@ -233,13 +229,13 @@ function applyMetadata({
     });
     if (file.size <= lyricsMaxBytes) {
       setLyrics(file);
-      filledParts.push("歌词");
+      filled = true;
     }
   }
 
-  if (filledParts.length) {
+  if (filled) {
     metadataFilled.value = true;
-    lookupStatus.value = { tone: "info", message: `已填充${filledParts.join("、")}。` };
+    lookupStatus.value = null;
   } else {
     lookupStatus.value = { tone: "info", message: "当前字段均已有内容，无需补全。" };
   }

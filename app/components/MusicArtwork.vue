@@ -34,7 +34,7 @@ watch(
     />
     <span
       v-else
-      class="grid size-[76%] place-items-center rounded-full bg-[repeating-radial-gradient(circle,#19332a_0%_6%,#36584a_7%_8%)] shadow-md"
+      class="grid size-[76%] place-items-center rounded-full bg-[repeating-radial-gradient(circle,var(--color-artwork-disc)_0%_6%,var(--color-artwork-groove)_7%_8%)] shadow-md"
     >
       <span class="grid size-[33%] place-items-center rounded-full bg-artwork-label">
         <span class="size-[18%] rounded-full bg-artwork-spindle" />

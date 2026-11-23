@@ -5,9 +5,10 @@ import { useAppStore } from "~/stores/app";
 import AccountAvatar from "~/components/AccountAvatar.vue";
 import AccountProfileDialog from "~/components/AccountProfileDialog.vue";
 import LogoutConfirmDialog from "~/components/LogoutConfirmDialog.vue";
+import ThemeColorPicker from "~/components/ThemeColorPicker.vue";
 import { computed, nextTick, onMounted, ref, shallowRef, useTemplateRef } from "vue";
 import { usePreferredDark } from "@vueuse/core";
-import { Share2 } from "@lucide/vue";
+import { Pencil, Share2 } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import { appName, officialSiteUrl } from "~~/shared/app-brand";
 import type { Account } from "~~/shared/types/library";
@@ -22,7 +23,7 @@ const tabs: readonly SettingsTab[] = ["account", "about"];
 const repositoryUrl = "https://github.com/lovetingyuan/inyue";
 
 const session = useSessionStore();
-const { theme, offline, native } = storeToRefs(useAppStore());
+const { theme, themeColor, offline, native } = storeToRefs(useAppStore());
 const prefersDark = usePreferredDark();
 const githubIcon = computed(() =>
   theme.value === "dark" || (theme.value === "system" && prefersDark.value)
@@ -186,7 +187,20 @@ defineExpose({
           <div class="flex items-start gap-3">
             <AccountAvatar :image="account.image" :name="account.name" class="size-14" />
             <div class="min-w-0 flex-1">
-              <h3 class="truncate text-lg font-bold">{{ account.name }}</h3>
+              <div class="flex items-center gap-1">
+                <h3 class="truncate text-lg font-bold">{{ account.name }}</h3>
+                <button
+                  type="button"
+                  class="btn btn-ghost btn-square btn-xs shrink-0 text-base-content/70"
+                  aria-label="编辑资料"
+                  aria-haspopup="dialog"
+                  title="编辑资料"
+                  :disabled="session.signingOut || offline"
+                  @click="profileEditor?.open(account)"
+                >
+                  <Pencil class="size-3.5" aria-hidden="true" />
+                </button>
+              </div>
               <p class="mt-0.5 break-all text-sm leading-tight text-base-content/70">
                 {{ account.email }}
                 <img
@@ -200,15 +214,6 @@ defineExpose({
                 />
               </p>
             </div>
-            <button
-              type="button"
-              class="btn btn-ghost btn-xs shrink-0 font-normal"
-              aria-haspopup="dialog"
-              :disabled="session.signingOut || offline"
-              @click="profileEditor?.open(account)"
-            >
-              编辑资料
-            </button>
             <button
               type="button"
               class="btn btn-error btn-ghost btn-xs shrink-0 font-normal"
@@ -241,6 +246,8 @@ defineExpose({
               <option value="dark">深色</option>
             </select>
           </label>
+
+          <ThemeColorPicker v-model="themeColor" />
         </section>
 
         <section
@@ -255,7 +262,7 @@ defineExpose({
             <img src="/assets/icon/inyue.svg" width="48" height="48" class="shrink-0" alt="" />
             <div>
               <h3 class="text-lg font-bold">inYue</h3>
-              <p class="mt-0.5 text-sm text-base-content/70">inYue, 你的私人音乐园地</p>
+              <p class="text-sm text-base-content/70">inYue, 你的私人音乐园地</p>
             </div>
           </div>
 

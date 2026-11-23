@@ -10,7 +10,9 @@ import { navigateTo, useHead, useNuxtApp, useRouter, useRuntimeConfig } from "#a
 import { useStorage } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import type { AppTheme } from "~/types/native-theme";
+import type { AppThemeColor } from "~/types/theme";
 import { libraryReturnPath } from "~/utils/account-navigation";
+import { defaultThemeColor, isAppThemeColor } from "~/utils/theme-colors";
 
 defineOptions({ name: "App" });
 
@@ -27,7 +29,8 @@ const integrationPlayback = useRuntimeConfig().public.integrationPlayback;
 
 useAppSession();
 
-const theme = useStorage<AppTheme>("music-theme", storeToRefs(app).theme, undefined, {
+const { theme: storedTheme, themeColor: storedThemeColor } = storeToRefs(app);
+const theme = useStorage<AppTheme>("music-theme", storedTheme, undefined, {
   initOnMounted: nuxtApp.payload.serverRendered,
   listenToStorageChanges: false,
   writeDefaults: false,
@@ -36,9 +39,20 @@ const theme = useStorage<AppTheme>("music-theme", storeToRefs(app).theme, undefi
     write: (value) => value,
   },
 });
+const themeColor = useStorage<AppThemeColor>("music-theme-color", storedThemeColor, undefined, {
+  initOnMounted: nuxtApp.payload.serverRendered,
+  listenToStorageChanges: false,
+  writeDefaults: false,
+  serializer: {
+    read: (value) => (isAppThemeColor(value) ? value : defaultThemeColor),
+    write: (value) => value,
+  },
+});
 useHead({
   htmlAttrs: {
     "data-theme": () => (theme.value === "system" ? undefined : theme.value),
+    "data-theme-color": () =>
+      themeColor.value === defaultThemeColor ? undefined : themeColor.value,
   },
 });
 

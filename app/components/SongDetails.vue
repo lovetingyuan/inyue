@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { libraryError } from "~/utils/library-error";
+import { linkifyText } from "~/utils/linkify-text";
 import { useAppStore } from "~/stores/app";
 import { useCoverQuery, useSongDetailsState } from "~/composables/useLibraryQueries";
 import MusicArtwork from "~/components/MusicArtwork.vue";
@@ -32,6 +33,20 @@ const albumAndYear = computed(() => {
   const { album, year } = song.value;
   return [album, year ? `${year}年` : ""].filter(Boolean).join(" · ");
 });
+const credits = computed(() => {
+  const lyricist = song.value.lyricist?.trim();
+  const composer = song.value.composer?.trim();
+  if (lyricist && composer && lyricist === composer) {
+    return [{ label: "词曲", value: lyricist }];
+  }
+  return [
+    ...(lyricist ? [{ label: "作词", value: lyricist }] : []),
+    ...(composer ? [{ label: "作曲", value: composer }] : []),
+  ];
+});
+const descriptionSegments = computed(() =>
+  song.value.description ? linkifyText(song.value.description) : [],
+);
 const emit = defineEmits<{ close: []; edit: [Song]; delete: []; playlists: [] }>();
 const playlistButton = useTemplateRef("playlistButton");
 </script>
@@ -70,23 +85,33 @@ const playlistButton = useTemplateRef("playlistButton");
       </div>
     </header>
     <div
-      v-if="song.lyricist || song.composer || song.description"
+      v-if="credits.length || song.description"
       class="min-h-0 space-y-4 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6"
     >
-      <dl v-if="song.lyricist || song.composer" class="flex flex-wrap gap-x-5 gap-y-2 text-sm">
-        <div v-if="song.lyricist" class="flex min-w-0 items-baseline gap-2">
-          <dt class="shrink-0 text-base-content/65">作词</dt>
-          <dd class="wrap-anywhere font-medium">{{ song.lyricist }}</dd>
-        </div>
-        <div v-if="song.composer" class="flex min-w-0 items-baseline gap-2">
-          <dt class="shrink-0 text-base-content/65">作曲</dt>
-          <dd class="wrap-anywhere font-medium">{{ song.composer }}</dd>
+      <dl v-if="credits.length" class="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+        <div
+          v-for="credit in credits"
+          :key="credit.label"
+          class="flex min-w-0 items-baseline gap-2"
+        >
+          <dt class="shrink-0 text-base-content/65">{{ credit.label }}</dt>
+          <dd class="wrap-anywhere font-medium">{{ credit.value }}</dd>
         </div>
       </dl>
       <section v-if="song.description">
         <h3 class="mb-1 text-xs font-semibold text-base-content/65">简介</h3>
         <p class="text-sm/relaxed wrap-anywhere whitespace-pre-wrap text-base-content/85">
-          {{ song.description }}
+          <template v-for="(segment, index) in descriptionSegments" :key="index">
+            <a
+              v-if="segment.type === 'link'"
+              :href="segment.href"
+              class="link link-primary underline-offset-2"
+              :target="app.native ? undefined : '_blank'"
+              :rel="app.native ? undefined : 'noopener noreferrer'"
+              >{{ segment.text }}</a
+            >
+            <template v-else>{{ segment.text }}</template>
+          </template>
         </p>
       </section>
     </div>

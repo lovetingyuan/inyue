@@ -1,6 +1,18 @@
 import { lyricsMaxBytes } from "~~/shared/library-limits";
 import { parseLrc } from "~~/shared/lrc";
+import {
+  buildItunesSearchUrl,
+  cleanText,
+  hasCjkText,
+  isAllowedCoverUrl,
+  isRecord,
+  itunesSearchRegions,
+  mergeSongMetadataCandidates,
+  normalizeMetadataKey,
+  parseItunesSearchPayload,
+} from "~~/shared/song-metadata";
 import type {
+  ItunesCountry,
   SongMetadataCandidate,
   SongMetadataEnrichRequest,
   SongMetadataEnrichResult,
@@ -8,8 +20,6 @@ import type {
 } from "~~/shared/types/song-metadata";
 
 const userAgent = "inYue/1.0 (https://inyue.tingyuan.nz)";
-const cjkPattern = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
-const allowedCoverHostPattern = /^[a-z0-9-]+\.mzstatic\.com$/i;
 const encoder = new TextEncoder();
 
 interface DeepSeekConfig {
@@ -18,20 +28,9 @@ interface DeepSeekConfig {
   deepseekModel?: string;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function cleanText(value: unknown, maxLength: number): string | null {
-  if (typeof value !== "string") {
-    return null;
-  }
-  const trimmed = value.replace(/\s+/g, " ").trim();
-  if (!trimmed) {
-    return null;
-  }
-  return trimmed.slice(0, maxLength);
-}
+type ItunesRegionFetchResult =
+  | { ok: true; items: SongMetadataCandidate[] }
+  | { ok: false; blocked: boolean };
 
 function cleanMultilineText(value: unknown, maxLength: number): string | null {
   if (typeof value !== "string") {
@@ -44,71 +43,101 @@ function cleanMultilineText(value: unknown, maxLength: number): string | null {
   return normalized.slice(0, maxLength);
 }
 
-function parseYear(value: unknown): number | null {
-  if (typeof value === "number" && Number.isInteger(value) && value >= 1000 && value <= 9999) {
-    return value;
-  }
-  if (typeof value !== "string") {
-    return null;
-  }
-  const match = /^([1-9]\d{3})/.exec(value.trim());
-  return match?.[1] ? Number(match[1]) : null;
-}
-
-function normalizeKey(value: string) {
-  return value.toLowerCase().replace(/[\s\-_()[\]（）【】·.,!?，。！？'"’“”]+/g, "");
-}
-
-function toHighResCoverUrl(artworkUrl: string | null): string | null {
-  if (!artworkUrl) {
-    return null;
-  }
-  const upgraded = artworkUrl.replace(/\/\d+x\d+bb\.(?:jpg|jpeg|png|webp)$/i, "/600x600bb.jpg");
-  return isAllowedCoverUrl(upgraded)?.href ?? null;
-}
-
-export function isAllowedCoverUrl(raw: string): URL | null {
+async function fetchItunesRegion(
+  query: string,
+  country: ItunesCountry,
+): Promise<ItunesRegionFetchResult> {
   try {
-    const parsed = new URL(raw);
-    if (
-      parsed.protocol !== "https:" ||
-      parsed.username ||
-      parsed.password ||
-      parsed.port ||
-      !allowedCoverHostPattern.test(parsed.hostname) ||
-      !parsed.pathname.startsWith("/image/")
-    ) {
-      return null;
+    const response = await fetch(buildItunesSearchUrl(query, country), {
+      headers: { accept: "application/json", "user-agent": userAgent },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      return { ok: false, blocked: response.status === 429 || response.status === 403 };
     }
-    return parsed;
+    const data: unknown = await response.json();
+    return { ok: true, items: parseItunesSearchPayload(data) };
   } catch {
-    return null;
+    return { ok: false, blocked: false };
   }
 }
 
-async function fetchItunesRegion(query: string, country: "hk" | "us") {
-  const url = new URL("https://itunes.apple.com/search");
-  url.searchParams.set("term", query);
-  url.searchParams.set("media", "music");
-  url.searchParams.set("entity", "song");
+async function fetchDeezerSearch(query: string): Promise<SongMetadataCandidate[]> {
+  const url = new URL("https://api.deezer.com/search");
+  url.searchParams.set("q", query);
   url.searchParams.set("limit", "8");
-  url.searchParams.set("country", country);
-  url.searchParams.set("lang", "zh_cn");
 
   const response = await fetch(url, {
     headers: { accept: "application/json", "user-agent": userAgent },
-    signal: AbortSignal.timeout(7000),
+    signal: AbortSignal.timeout(5000),
   });
   if (!response.ok) {
-    throw new Error(`iTunes ${country} status ${response.status}`);
+    throw new Error(`Deezer status ${response.status}`);
   }
-  const data: unknown = await response.json();
-  if (!isRecord(data) || !Array.isArray(data.results)) {
-    return [];
+  const payload: unknown = await response.json();
+  if (!isRecord(payload) || payload.error || !Array.isArray(payload.data)) {
+    throw new Error("Deezer invalid response");
   }
 
   const items: SongMetadataCandidate[] = [];
-  for (const entry of data.results) {
+  for (const entry of payload.data) {
+    if (!isRecord(entry)) {
+      continue;
+    }
+    const title = cleanText(entry.title, 250);
+    const artist = isRecord(entry.artist) ? cleanText(entry.artist.name, 250) : null;
+    if (!title || !artist) {
+      continue;
+    }
+    const albumRecord = isRecord(entry.album) ? entry.album : null;
+    const rawThumb =
+      cleanText(albumRecord?.cover_medium, 1000) ?? cleanText(albumRecord?.cover_small, 1000);
+    const rawCover =
+      cleanText(albumRecord?.cover_big, 1000) ?? cleanText(albumRecord?.cover_xl, 1000) ?? rawThumb;
+    const artworkUrl = rawThumb ? (isAllowedCoverUrl(rawThumb)?.href ?? null) : null;
+    const coverUrl = rawCover ? (isAllowedCoverUrl(rawCover)?.href ?? artworkUrl) : artworkUrl;
+    const duration =
+      typeof entry.duration === "number" && Number.isFinite(entry.duration) && entry.duration > 0
+        ? Math.round(entry.duration)
+        : null;
+    const id =
+      typeof entry.id === "number" && Number.isFinite(entry.id)
+        ? `deezer:${entry.id}`
+        : `deezer:${title}:${artist}`;
+
+    items.push({
+      id,
+      title,
+      artist,
+      album: cleanText(albumRecord?.title, 250),
+      year: null,
+      duration,
+      artworkUrl,
+      coverUrl,
+    });
+  }
+  return items;
+}
+
+async function fetchLrclibSearchCandidates(query: string): Promise<SongMetadataCandidate[]> {
+  const url = new URL("https://lrclib.net/api/search");
+  url.searchParams.set("q", query);
+
+  const response = await fetch(url, {
+    headers: { accept: "application/json", "user-agent": userAgent },
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!response.ok) {
+    throw new Error(`LRCLIB status ${response.status}`);
+  }
+  const payload: unknown = await response.json();
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  const syncedItems: SongMetadataCandidate[] = [];
+  const otherItems: SongMetadataCandidate[] = [];
+  for (const entry of payload) {
     if (!isRecord(entry)) {
       continue;
     }
@@ -117,62 +146,78 @@ async function fetchItunesRegion(query: string, country: "hk" | "us") {
     if (!title || !artist) {
       continue;
     }
-    const id =
-      typeof entry.trackId === "number" && Number.isFinite(entry.trackId)
-        ? String(entry.trackId)
-        : `${title}:${artist}`;
-    const rawArtwork = cleanText(entry.artworkUrl100, 1000);
-    const artworkUrl = rawArtwork ? (isAllowedCoverUrl(rawArtwork)?.href ?? null) : null;
-    const durationMs =
-      typeof entry.trackTimeMillis === "number" &&
-      Number.isFinite(entry.trackTimeMillis) &&
-      entry.trackTimeMillis > 0
-        ? entry.trackTimeMillis
+    const duration =
+      typeof entry.duration === "number" && Number.isFinite(entry.duration) && entry.duration > 0
+        ? Math.round(entry.duration)
         : null;
-    items.push({
+    const id =
+      typeof entry.id === "number" && Number.isFinite(entry.id)
+        ? `lrclib:${entry.id}`
+        : `lrclib:${title}:${artist}`;
+    const candidate: SongMetadataCandidate = {
       id,
       title,
       artist,
-      album: cleanText(entry.collectionName, 250),
-      year: parseYear(entry.releaseDate),
-      duration: durationMs ? Math.round(durationMs / 1000) : null,
-      artworkUrl,
-      coverUrl: toHighResCoverUrl(artworkUrl),
-    });
+      album: cleanText(entry.albumName, 250),
+      year: null,
+      duration,
+      artworkUrl: null,
+      coverUrl: null,
+    };
+    if (typeof entry.syncedLyrics === "string" && entry.syncedLyrics.trim()) {
+      syncedItems.push(candidate);
+    } else {
+      otherItems.push(candidate);
+    }
   }
-  return items;
+  return [...syncedItems, ...otherItems].slice(0, 12);
 }
 
 export async function searchSongMetadata(query: string): Promise<SongMetadataSearchResult> {
-  const regions: readonly ("hk" | "us")[] = cjkPattern.test(query) ? ["hk", "us"] : ["us", "hk"];
-  const settled = await Promise.allSettled(
-    regions.map((country) => fetchItunesRegion(query, country)),
-  );
-  const fulfilled = settled.filter(
-    (item): item is PromiseFulfilledResult<SongMetadataCandidate[]> => item.status === "fulfilled",
-  );
-  if (!fulfilled.length) {
-    return { items: [], unavailable: true };
-  }
+  const [primaryCountry, secondaryCountry] = itunesSearchRegions(query);
+  let anySourceSucceeded = false;
 
-  const seenIds = new Set<string>();
-  const seenKeys = new Set<string>();
-  const merged: SongMetadataCandidate[] = [];
-  for (const result of fulfilled) {
-    for (const candidate of result.value) {
-      const signature = `${normalizeKey(candidate.title)}|${normalizeKey(candidate.artist)}|${normalizeKey(candidate.album ?? "")}`;
-      if (seenIds.has(candidate.id) || seenKeys.has(signature)) {
-        continue;
-      }
-      seenIds.add(candidate.id);
-      seenKeys.add(signature);
-      merged.push(candidate);
-      if (merged.length >= 10) {
+  const primary = await fetchItunesRegion(query, primaryCountry);
+  if (primary.ok) {
+    anySourceSucceeded = true;
+    const primaryMerged = mergeSongMetadataCandidates([primary.items]);
+    if (primaryMerged.length >= 5) {
+      return { items: primaryMerged };
+    }
+    const secondary = await fetchItunesRegion(query, secondaryCountry);
+    const merged = mergeSongMetadataCandidates(
+      secondary.ok ? [primary.items, secondary.items] : [primary.items],
+    );
+    if (merged.length) {
+      return { items: merged };
+    }
+  } else if (!primary.blocked) {
+    const secondary = await fetchItunesRegion(query, secondaryCountry);
+    if (secondary.ok) {
+      anySourceSucceeded = true;
+      const merged = mergeSongMetadataCandidates([secondary.items]);
+      if (merged.length) {
         return { items: merged };
       }
     }
   }
-  return { items: merged };
+
+  const fallbackSources = hasCjkText(query)
+    ? [fetchLrclibSearchCandidates(query), fetchDeezerSearch(query)]
+    : [fetchDeezerSearch(query), fetchLrclibSearchCandidates(query)];
+  const settled = await Promise.allSettled(fallbackSources);
+  const fulfilled = settled.filter(
+    (item): item is PromiseFulfilledResult<SongMetadataCandidate[]> => item.status === "fulfilled",
+  );
+  if (fulfilled.length) {
+    anySourceSucceeded = true;
+  }
+  if (!anySourceSucceeded) {
+    return { items: [], unavailable: true };
+  }
+  return {
+    items: mergeSongMetadataCandidates(fulfilled.map((item) => item.value)),
+  };
 }
 
 function validSyncedLyrics(value: unknown): string | null {
@@ -196,8 +241,8 @@ function scoreLrcEntry(
   targetDuration: number | null,
 ) {
   let score = 0;
-  const title = typeof entry.trackName === "string" ? normalizeKey(entry.trackName) : "";
-  const artist = typeof entry.artistName === "string" ? normalizeKey(entry.artistName) : "";
+  const title = typeof entry.trackName === "string" ? normalizeMetadataKey(entry.trackName) : "";
+  const artist = typeof entry.artistName === "string" ? normalizeMetadataKey(entry.artistName) : "";
   if (title && title === targetTitle) {
     score += 4;
   } else if (title && (title.includes(targetTitle) || targetTitle.includes(title))) {
@@ -269,8 +314,8 @@ async function fetchLrclibLyrics(request: SongMetadataEnrichRequest): Promise<st
     if (!Array.isArray(list)) {
       return null;
     }
-    const targetTitle = normalizeKey(request.title);
-    const targetArtist = normalizeKey(request.artist);
+    const targetTitle = normalizeMetadataKey(request.title);
+    const targetArtist = normalizeMetadataKey(request.artist);
     const targetDuration =
       typeof request.duration === "number" && request.duration > 0 ? request.duration : null;
 

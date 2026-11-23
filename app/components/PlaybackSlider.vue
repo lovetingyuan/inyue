@@ -24,7 +24,7 @@ function rangeValue(event: Event) {
 <style scoped>
 .range {
   --slider-value: v-bind(fill);
-  --range-thumb-size: 0.625rem;
+  --range-thumb-size: 0.75rem;
   --range-thumb: currentColor;
   --range-p: 0px;
   --range-bg: transparent;
@@ -37,7 +37,7 @@ function rangeValue(event: Event) {
       currentColor var(--slider-stop),
       color-mix(in oklab, currentColor 24%, transparent) 0
     )
-    center / 100% 0.25rem no-repeat;
+    center / 100% 0.375rem no-repeat;
 }
 
 @media (forced-colors: active) {

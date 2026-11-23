@@ -3,6 +3,7 @@ import MusicArtwork from "~/components/MusicArtwork.vue";
 import { useMusicApi } from "~/composables/useMusicApi";
 import { formatMusicTime } from "~/utils/format-music-time";
 import { showMusicDialog } from "~/utils/music-dialog";
+import { fetchCoverBlobDirect, searchItunesMetadataDirect } from "~/utils/song-metadata-lookup";
 import { computed, onBeforeUnmount, ref, shallowRef, useTemplateRef, watch } from "vue";
 import { Sparkles, X } from "@lucide/vue";
 import { coverMaxBytes } from "~~/shared/library-limits";
@@ -96,20 +97,44 @@ async function lookup() {
   searching.value = true;
   emit("status", null);
   try {
-    const response = await request<SongMetadataSearchResult>("/api/songs/metadata/search", {
-      query: { q: term },
-      timeout: 12_000,
-      signal: controller.signal,
-    });
+    const direct = await searchItunesMetadataDirect(term, controller.signal);
     if (controller.signal.aborted) {
       return;
     }
-    const data = response._data;
-    if (data?.unavailable) {
+
+    let items = direct.items;
+    let unavailable = Boolean(direct.unavailable);
+    if (!items.length) {
+      try {
+        const response = await request<SongMetadataSearchResult>("/api/songs/metadata/search", {
+          query: { q: term },
+          timeout: 12_000,
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) {
+          return;
+        }
+        const data = response._data;
+        if (data?.items.length) {
+          items = data.items;
+          unavailable = false;
+        } else if (data && !data.unavailable) {
+          unavailable = false;
+        }
+      } catch (cause) {
+        if (isAbortError(cause) || controller.signal.aborted) {
+          return;
+        }
+        if (direct.unavailable) {
+          throw cause;
+        }
+      }
+    }
+
+    if (unavailable) {
       emit("status", { tone: "error", message: "搜索服务暂时不可用，请稍后重试。" });
       return;
     }
-    const items = data?.items ?? [];
     if (!items.length) {
       emit("status", { tone: "info", message: "未找到匹配的歌曲。" });
       return;
@@ -133,9 +158,29 @@ async function lookup() {
   }
 }
 
+function toCoverFile(candidate: SongMetadataCandidate, blob: Blob | undefined | null) {
+  if (!blob || !blob.size || blob.size > coverMaxBytes || !coverTypes.includes(blob.type)) {
+    return undefined;
+  }
+  const extension = blob.type.slice("image/".length);
+  const safeTitle = candidate.title.replace(/[\\/:*?"<>|]+/g, "").slice(0, 60) || "cover";
+  return new File([blob], `${safeTitle}.${extension}`, { type: blob.type });
+}
+
 async function fetchCoverFile(candidate: SongMetadataCandidate, signal: AbortSignal) {
   if (!props.needCover || !candidate.coverUrl) {
     return undefined;
+  }
+  try {
+    const directBlob = await fetchCoverBlobDirect(candidate.coverUrl, signal);
+    const directFile = toCoverFile(candidate, directBlob);
+    if (directFile) {
+      return directFile;
+    }
+  } catch {
+    if (signal.aborted) {
+      return undefined;
+    }
   }
   try {
     const response = await request<Blob>("/api/songs/metadata/cover", {
@@ -144,13 +189,7 @@ async function fetchCoverFile(candidate: SongMetadataCandidate, signal: AbortSig
       timeout: 12_000,
       signal,
     });
-    const blob = response._data;
-    if (!blob || !blob.size || blob.size > coverMaxBytes || !coverTypes.includes(blob.type)) {
-      return undefined;
-    }
-    const extension = blob.type.slice("image/".length);
-    const safeTitle = candidate.title.replace(/[\\/:*?"<>|]+/g, "").slice(0, 60) || "cover";
-    return new File([blob], `${safeTitle}.${extension}`, { type: blob.type });
+    return toCoverFile(candidate, response._data);
   } catch {
     return undefined;
   }

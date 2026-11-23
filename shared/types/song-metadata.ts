@@ -1,3 +1,5 @@
+export type ItunesCountry = "hk" | "us";
+
 export interface SongMetadataCandidate {
   id: string;
   title: string;

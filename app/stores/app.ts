@@ -3,12 +3,15 @@ import { Capacitor } from "@capacitor/core";
 import { useTimeoutFn } from "@vueuse/core";
 import { defineStore } from "pinia";
 import type { AppTheme } from "~/types/native-theme";
+import type { AppThemeColor } from "~/types/theme";
 import type { AppToastMessage, AppToastTone } from "~/types/toast";
+import { defaultThemeColor } from "~/utils/theme-colors";
 
 export const useAppStore = defineStore("app", () => {
   const drawerOpen = ref(false);
   const offline = ref(false);
   const theme = ref<AppTheme>("system");
+  const themeColor = ref<AppThemeColor>(defaultThemeColor);
   const native = computed(() => Capacitor.isNativePlatform());
   const toast = shallowRef<AppToastMessage>();
   let toastId = 0;
@@ -57,5 +60,15 @@ export const useAppStore = defineStore("app", () => {
     }
   });
 
-  return { drawerOpen, offline, native, theme, toast, showToast, notifyOffline, clearToast };
+  return {
+    drawerOpen,
+    offline,
+    native,
+    theme,
+    themeColor,
+    toast,
+    showToast,
+    notifyOffline,
+    clearToast,
+  };
 });
