@@ -33,7 +33,7 @@ defineExpose({
     :aria-labelledby="titleId"
     @cancel="session.signingOut && $event.preventDefault()"
   >
-    <div class="modal-box max-w-sm">
+    <div class="modal-box sm:max-w-sm">
       <h2 :id="titleId" class="text-lg font-semibold">确定退出登录？</h2>
       <p v-if="session.logoutError" class="alert alert-error mt-3" role="alert">
         {{ session.logoutError }}

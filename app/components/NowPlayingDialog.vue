@@ -36,6 +36,9 @@ const hasLyrics = computed(() =>
   Boolean(track.value?.lyrics && parseLrc(track.value.lyrics).length),
 );
 const showLyrics = ref(false);
+const showCoverAura = computed(
+  () => dialogOpen.value && playing.value && !(hasLyrics.value && showLyrics.value),
+);
 const lyricPosition = computed(() => progressBar.value?.displayedPosition ?? position.value);
 const scrubbing = computed(() => progressBar.value?.scrubbing ?? false);
 
@@ -95,16 +98,23 @@ defineExpose({
       </header>
       <div
         v-if="dialogOpen && track"
-        class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-2.5 sm:px-8"
+        class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-5 pb-2.5 sm:px-8"
       >
         <div class="m-auto grid w-full max-w-sm shrink-0 gap-[clamp(0.875rem,2.2dvh,1.375rem)]">
           <div class="relative grid place-items-center">
-            <MusicArtwork
-              :src="dialogOpen ? track.coverUrl : undefined"
-              class="ml-0! w-full max-w-[min(18rem,42dvh)] rounded-[1.5rem]! shadow-xl shadow-base-content/15 ring-1 ring-base-content/8 sm:max-w-[min(16.5rem,36dvh)]"
-              :class="{ invisible: hasLyrics && showLyrics }"
+            <div
+              class="isolate block w-full max-w-[min(18rem,42dvh)] [--aura-radius:1.5rem] sm:max-w-[min(16.5rem,36dvh)]"
+              :class="[
+                showCoverAura ? 'aura aura-dual text-primary' : 'p-0.5',
+                { invisible: hasLyrics && showLyrics },
+              ]"
               :aria-hidden="(hasLyrics && showLyrics) || undefined"
-            />
+            >
+              <MusicArtwork
+                :src="dialogOpen ? track.coverUrl : undefined"
+                class="w-full rounded-[1.5rem]! shadow-xl shadow-base-content/15 ring-1 ring-base-content/8"
+              />
+            </div>
             <MusicLyrics
               v-if="dialogOpen && hasLyrics && showLyrics"
               :lyrics="track.lyrics"

@@ -6,10 +6,11 @@ import AccountAvatar from "~/components/AccountAvatar.vue";
 import AccountProfileDialog from "~/components/AccountProfileDialog.vue";
 import LogoutConfirmDialog from "~/components/LogoutConfirmDialog.vue";
 import ThemeColorPicker from "~/components/ThemeColorPicker.vue";
-import { computed, nextTick, onMounted, ref, shallowRef, useTemplateRef } from "vue";
+import { computed, nextTick, onMounted, ref, shallowRef, useId, useTemplateRef } from "vue";
 import { usePreferredDark } from "@vueuse/core";
 import { Pencil, Share2 } from "@lucide/vue";
 import { storeToRefs } from "pinia";
+import type { AppTheme } from "~/types/native-theme";
 import { appName, officialSiteUrl } from "~~/shared/app-brand";
 import type { Account } from "~~/shared/types/library";
 
@@ -20,7 +21,14 @@ type SettingsTab = "account" | "about";
 type LogoutConfirmDialogExpose = { open: () => void };
 
 const tabs: readonly SettingsTab[] = ["account", "about"];
+const themeOptions: readonly { value: AppTheme; label: string }[] = [
+  { value: "system", label: "跟随系统" },
+  { value: "light", label: "浅色" },
+  { value: "dark", label: "深色" },
+];
 const repositoryUrl = "https://github.com/lovetingyuan/inyue";
+const themeLabelId = useId();
+const themeGroupName = useId();
 
 const session = useSessionStore();
 const { theme, themeColor, offline, native } = storeToRefs(useAppStore());
@@ -140,7 +148,7 @@ defineExpose({
     aria-labelledby="settings-title"
     @cancel="session.signingOut && $event.preventDefault()"
   >
-    <div class="modal-box flex max-h-[calc(100dvh-2rem)] max-w-lg flex-col overflow-hidden p-0">
+    <div class="modal-box flex max-h-[calc(100dvh-2rem)] flex-col overflow-hidden p-0 sm:max-w-lg">
       <h2 id="settings-title" class="sr-only">设置</h2>
       <div class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
         <div role="tablist" class="tabs tabs-sm tabs-box w-full" aria-label="设置分类">
@@ -238,14 +246,21 @@ defineExpose({
             />
           </label>
 
-          <label for="theme-select" class="grid gap-1.5 text-sm font-medium">
-            主题
-            <select id="theme-select" v-model="theme" class="select w-full">
-              <option value="system">跟随系统</option>
-              <option value="light">浅色</option>
-              <option value="dark">深色</option>
-            </select>
-          </label>
+          <div class="grid gap-1.5">
+            <span :id="themeLabelId" class="text-sm font-medium">主题</span>
+            <div role="radiogroup" :aria-labelledby="themeLabelId" class="join w-full">
+              <input
+                v-for="option in themeOptions"
+                :key="option.value"
+                v-model="theme"
+                class="join-item btn flex-1"
+                type="radio"
+                :name="themeGroupName"
+                :value="option.value"
+                :aria-label="option.label"
+              />
+            </div>
+          </div>
 
           <ThemeColorPicker v-model="themeColor" />
         </section>

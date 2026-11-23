@@ -166,7 +166,7 @@ defineExpose({ open });
     @cancel="saving && $event.preventDefault()"
     @close="clearDraft"
   >
-    <div class="modal-box safe-panel max-w-md">
+    <div class="modal-box safe-panel sm:max-w-md">
       <form v-if="original" class="grid gap-3" novalidate @submit.prevent="save">
         <h2 :id="`${fieldId}-title`" class="text-lg font-semibold">编辑资料</h2>
         <fieldset class="grid min-w-0 gap-3" :disabled="saving || app.offline">
