@@ -18,11 +18,12 @@
 }
 
 @theme {
-  --color-artwork-background: #275243;
-  --color-artwork-disc: #17342a;
-  --color-artwork-groove: #356352;
-  --color-artwork-label: #bfe4d2;
-  --color-artwork-spindle: #1e3e33;
+  --color-player-background: #3d6d5a;
+  --color-artwork-background: #487c67;
+  --color-artwork-disc: #2b5d4a;
+  --color-artwork-groove: #427863;
+  --color-artwork-label: #bbd3c8;
+  --color-artwork-spindle: #2b5d4a;
   --color-google-icon-background: #fff;
 }
 
@@ -115,11 +116,6 @@
     --theme-dark-accent-content: #18342a;
     --theme-dark-neutral: #12221c;
     --theme-dark-neutral-content: #eff7f3;
-    --color-artwork-background: #275243;
-    --color-artwork-disc: #17342a;
-    --color-artwork-groove: #356352;
-    --color-artwork-label: #bfe4d2;
-    --color-artwork-spindle: #1e3e33;
   }
 
   [data-theme-color="teal"] {
@@ -139,11 +135,6 @@
     --theme-dark-accent-content: #173438;
     --theme-dark-neutral: #112023;
     --theme-dark-neutral-content: #eef6f7;
-    --color-artwork-background: #224e54;
-    --color-artwork-disc: #143338;
-    --color-artwork-groove: #2e6067;
-    --color-artwork-label: #b9e3e8;
-    --color-artwork-spindle: #1b3d42;
   }
 
   [data-theme-color="blue"] {
@@ -163,11 +154,6 @@
     --theme-dark-accent-content: #1a2f4a;
     --theme-dark-neutral: #121e2d;
     --theme-dark-neutral-content: #eff4fa;
-    --color-artwork-background: #27466b;
-    --color-artwork-disc: #182d47;
-    --color-artwork-groove: #345882;
-    --color-artwork-label: #c2dbf8;
-    --color-artwork-spindle: #1e3754;
   }
 
   [data-theme-color="violet"] {
@@ -187,11 +173,6 @@
     --theme-dark-accent-content: #2a224a;
     --theme-dark-neutral: #19152b;
     --theme-dark-neutral-content: #f2f0fa;
-    --color-artwork-background: #3f356b;
-    --color-artwork-disc: #272047;
-    --color-artwork-groove: #514585;
-    --color-artwork-label: #d5cdfa;
-    --color-artwork-spindle: #312956;
   }
 
   [data-theme-color="rose"] {
@@ -211,11 +192,6 @@
     --theme-dark-accent-content: #401b27;
     --theme-dark-neutral: #25141a;
     --theme-dark-neutral-content: #faf0f3;
-    --color-artwork-background: #602c3d;
-    --color-artwork-disc: #3e1a26;
-    --color-artwork-groove: #76394d;
-    --color-artwork-label: #f5c5d3;
-    --color-artwork-spindle: #4c212f;
   }
 
   [data-theme-color="coral"] {
@@ -235,11 +211,6 @@
     --theme-dark-accent-content: #3c2014;
     --theme-dark-neutral: #251712;
     --theme-dark-neutral-content: #faf2ef;
-    --color-artwork-background: #5f3324;
-    --color-artwork-disc: #3e1f15;
-    --color-artwork-groove: #754130;
-    --color-artwork-label: #f5cdb9;
-    --color-artwork-spindle: #4b271b;
   }
 
   [data-theme-color="amber"] {
@@ -259,11 +230,6 @@
     --theme-dark-accent-content: #352611;
     --theme-dark-neutral: #211a10;
     --theme-dark-neutral-content: #f9f5ee;
-    --color-artwork-background: #55401e;
-    --color-artwork-disc: #372812;
-    --color-artwork-groove: #6b5128;
-    --color-artwork-label: #efd9ab;
-    --color-artwork-spindle: #433217;
   }
 
   html:root,
@@ -284,6 +250,12 @@
     --color-base-200: color-mix(in oklch, #f3f2ee 95%, var(--theme-primary) 5%);
     --color-base-300: color-mix(in oklch, #e6e5e0 93%, var(--theme-primary) 7%);
     --color-base-content: color-mix(in oklch, #222325 90%, var(--theme-primary) 10%);
+    --color-player-background: color-mix(in oklch, #525b58 42%, var(--theme-primary) 58%);
+    --color-artwork-background: color-mix(in oklch, #747e7a 38%, var(--theme-primary) 62%);
+    --color-artwork-disc: color-mix(in oklch, #2c3330 40%, var(--theme-primary) 60%);
+    --color-artwork-groove: color-mix(in oklch, #687470 36%, var(--theme-primary) 64%);
+    --color-artwork-label: color-mix(in oklch, #f4f7f5 72%, var(--theme-primary) 28%);
+    --color-artwork-spindle: color-mix(in oklch, #2c3330 40%, var(--theme-primary) 60%);
   }
 
   html:root[data-theme="dark"],
@@ -302,6 +274,12 @@
     --color-base-200: color-mix(in oklch, #212224 91%, var(--theme-primary) 9%);
     --color-base-300: color-mix(in oklch, #303235 88%, var(--theme-primary) 12%);
     --color-base-content: color-mix(in oklch, #eef0f2 94%, var(--theme-dark-primary) 6%);
+    --color-player-background: color-mix(in oklch, #1d2123 74%, var(--theme-dark-primary) 26%);
+    --color-artwork-background: color-mix(in oklch, #202426 62%, var(--theme-dark-primary) 38%);
+    --color-artwork-disc: color-mix(in oklch, #15181a 78%, var(--theme-dark-primary) 22%);
+    --color-artwork-groove: color-mix(in oklch, #1f2325 56%, var(--theme-dark-primary) 44%);
+    --color-artwork-label: color-mix(in oklch, #232628 20%, var(--theme-dark-primary) 80%);
+    --color-artwork-spindle: color-mix(in oklch, #15181a 72%, var(--theme-dark-primary) 28%);
   }
 
   @media (prefers-color-scheme: dark) {
@@ -321,6 +299,12 @@
       --color-base-200: color-mix(in oklch, #212224 91%, var(--theme-primary) 9%);
       --color-base-300: color-mix(in oklch, #303235 88%, var(--theme-primary) 12%);
       --color-base-content: color-mix(in oklch, #eef0f2 94%, var(--theme-dark-primary) 6%);
+      --color-player-background: color-mix(in oklch, #1d2123 74%, var(--theme-dark-primary) 26%);
+      --color-artwork-background: color-mix(in oklch, #202426 62%, var(--theme-dark-primary) 38%);
+      --color-artwork-disc: color-mix(in oklch, #15181a 78%, var(--theme-dark-primary) 22%);
+      --color-artwork-groove: color-mix(in oklch, #1f2325 56%, var(--theme-dark-primary) 44%);
+      --color-artwork-label: color-mix(in oklch, #232628 20%, var(--theme-dark-primary) 80%);
+      --color-artwork-spindle: color-mix(in oklch, #15181a 72%, var(--theme-dark-primary) 28%);
     }
   }
 }

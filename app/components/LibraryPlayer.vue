@@ -187,7 +187,7 @@ async function cycleMode() {
       <div
         v-if="track"
         data-drawer-gesture-ignore
-        class="relative grid grid-cols-[minmax(0,1fr)_auto_6rem] items-center gap-x-2 gap-y-1 rounded-box bg-neutral px-2.5 py-2 text-neutral-content shadow-lg @min-[40rem]/player:px-4 @min-[48rem]/player:grid-cols-[minmax(0,1fr)_minmax(14rem,1.4fr)_minmax(0,1fr)]"
+        class="relative grid grid-cols-[minmax(0,1fr)_auto_6rem] items-center gap-x-2 gap-y-1 rounded-box bg-player-background px-2.5 py-2 text-neutral-content shadow-md @min-[40rem]/player:px-4 @min-[48rem]/player:grid-cols-[minmax(0,1fr)_minmax(14rem,1.4fr)_minmax(0,1fr)]"
       >
         <div
           role="status"
@@ -195,7 +195,7 @@ async function cycleMode() {
         >
           <span
             v-if="showModeNotice"
-            class="badge badge-neutral badge-sm h-auto whitespace-nowrap rounded-full px-3 py-1 shadow-sm"
+            class="badge badge-sm h-auto whitespace-nowrap rounded-full border-0 bg-player-background px-3 py-1 text-neutral-content shadow-sm"
           >
             {{ playbackMode.label }}
           </span>
@@ -210,7 +210,7 @@ async function cycleMode() {
           <MusicArtwork :src="track.coverUrl" class="w-11" />
           <span class="min-w-0 flex-1">
             <span class="block truncate text-sm font-semibold">{{ track.title }}</span>
-            <span class="block truncate text-xs text-neutral-content/70">{{ track.artist }}</span>
+            <span class="block truncate text-xs text-neutral-content/75">{{ track.artist }}</span>
           </span>
         </button>
         <div
@@ -220,7 +220,7 @@ async function cycleMode() {
             class="flex items-center gap-0.5 @max-[48rem]/player:col-span-2 @min-[48rem]/player:gap-2"
           >
             <AsyncButton
-              class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/12"
+              class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/14"
               aria-label="上一首"
               :aria-keyshortcuts="shortcutsEnabled ? 'Shift+ArrowLeft' : undefined"
               :title="shortcutsEnabled ? '上一首（Shift + ←）' : undefined"
@@ -236,7 +236,7 @@ async function cycleMode() {
               </template>
             </AsyncButton>
             <AsyncButton
-              class="btn btn-circle relative size-10 border-0 bg-neutral-content text-neutral hover:bg-neutral-content/85"
+              class="btn btn-circle relative size-10 border-0 bg-neutral-content text-player-background hover:bg-neutral-content/90"
               :aria-label="playing ? '暂停' : '播放'"
               :loading="loading"
               :aria-keyshortcuts="shortcutsEnabled ? 'Space' : undefined"
@@ -254,7 +254,7 @@ async function cycleMode() {
               </template>
             </AsyncButton>
             <AsyncButton
-              class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/12"
+              class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/14"
               aria-label="下一首"
               :aria-keyshortcuts="shortcutsEnabled ? 'Shift+ArrowRight' : undefined"
               :title="shortcutsEnabled ? '下一首（Shift + →）' : undefined"
@@ -271,7 +271,7 @@ async function cycleMode() {
             </AsyncButton>
             <button
               type="button"
-              class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/12 disabled:opacity-60"
+              class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/14 disabled:opacity-60"
               :aria-label="modeLabel"
               :title="modeLabel"
               :disabled="changingMode"
@@ -293,7 +293,7 @@ async function cycleMode() {
             </button>
             <button
               type="button"
-              class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/12 @min-[48rem]/player:hidden"
+              class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/14 @min-[48rem]/player:hidden"
               aria-label="播放队列"
               aria-haspopup="dialog"
               @click="queueDialog?.open()"
@@ -306,7 +306,7 @@ async function cycleMode() {
         <div class="flex min-w-0 items-center justify-end @min-[48rem]/player:gap-2">
           <div class="flex min-w-0 items-center gap-1">
             <AsyncButton
-              class="btn btn-ghost btn-circle btn-sm shrink-0 text-neutral-content hover:bg-neutral-content/12"
+              class="btn btn-ghost btn-circle btn-sm shrink-0 text-neutral-content hover:bg-neutral-content/14"
               :aria-label="muteLabel"
               :title="muteLabel"
               :action="toggleMute"
@@ -332,7 +332,7 @@ async function cycleMode() {
           </div>
           <button
             type="button"
-            class="btn btn-ghost btn-circle hidden text-neutral-content hover:bg-neutral-content/12 @min-[48rem]/player:inline-flex"
+            class="btn btn-ghost btn-circle hidden text-neutral-content hover:bg-neutral-content/14 @min-[48rem]/player:inline-flex"
             aria-label="播放队列"
             aria-haspopup="dialog"
             @click="queueDialog?.open()"
