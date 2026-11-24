@@ -101,39 +101,45 @@ defineExpose({
         class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-5 pb-2.5 sm:px-8"
       >
         <div class="m-auto grid w-full max-w-sm shrink-0 gap-[clamp(0.875rem,2.2dvh,1.375rem)]">
-          <div class="relative grid place-items-center">
-            <div
-              class="isolate block w-full max-w-[min(18rem,42dvh)] [--aura-radius:1.5rem] sm:max-w-[min(16.5rem,36dvh)]"
+          <div
+            class="relative grid place-items-center [--cover-width:min(18rem,42dvh)] sm:[--cover-width:min(16.5rem,36dvh)]"
+          >
+            <component
+              :is="hasLyrics ? 'button' : 'div'"
+              :type="hasLyrics ? 'button' : undefined"
+              class="grid w-full place-items-center"
               :class="[
-                showCoverAura ? 'aura aura-dual text-primary' : 'p-0.5',
-                { invisible: hasLyrics && showLyrics },
+                hasLyrics && 'z-10 cursor-pointer select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary',
+                hasLyrics && showLyrics
+                  ? 'rounded-xl'
+                  : 'max-w-(--cover-width) rounded-[1.5rem]',
               ]"
-              :aria-hidden="(hasLyrics && showLyrics) || undefined"
+              :aria-pressed="hasLyrics ? showLyrics : undefined"
+              :aria-label="hasLyrics ? (showLyrics ? '显示封面' : '显示歌词') : undefined"
+              @click="hasLyrics && (showLyrics = !showLyrics)"
             >
-              <MusicArtwork
-                :src="dialogOpen ? track.coverUrl : undefined"
-                class="w-full rounded-[1.5rem]! shadow-xl shadow-base-content/15 ring-1 ring-base-content/8"
-              />
-            </div>
+              <span
+                class="isolate block w-full max-w-(--cover-width) [--aura-radius:1.5rem]"
+                :class="[
+                  showCoverAura ? 'aura aura-dual text-primary' : 'p-0.5',
+                  { invisible: hasLyrics && showLyrics },
+                ]"
+              >
+                <span class="inline-grid w-full align-top [@media(hover:hover)]:hover-3d">
+                  <MusicArtwork
+                    :src="dialogOpen ? track.coverUrl : undefined"
+                    class="w-full rounded-[1.5rem]! shadow-xl shadow-base-content/15 ring-1 ring-base-content/8"
+                  />
+                  <span v-for="zone in 8" :key="zone" aria-hidden="true" />
+                </span>
+              </span>
+            </component>
             <MusicLyrics
               v-if="dialogOpen && hasLyrics && showLyrics"
               :lyrics="track.lyrics"
               :position="lyricPosition"
               :scrubbing="scrubbing"
               class="absolute inset-0"
-            />
-            <button
-              v-if="hasLyrics"
-              type="button"
-              class="absolute inset-0 z-10 cursor-pointer select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
-              :class="
-                showLyrics
-                  ? 'rounded-xl'
-                  : 'mx-auto aspect-square w-full max-w-[min(18rem,42dvh)] rounded-[1.5rem] sm:max-w-[min(16.5rem,36dvh)]'
-              "
-              :aria-pressed="showLyrics"
-              :aria-label="showLyrics ? '显示封面' : '显示歌词'"
-              @click="showLyrics = !showLyrics"
             />
           </div>
           <div class="min-w-0 mt-4">

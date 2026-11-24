@@ -2,7 +2,13 @@ import { Capacitor, registerPlugin } from "@capacitor/core";
 import { useEventBus } from "@vueuse/core";
 import { audioMaxBytes, coverMaxBytes } from "~~/shared/library-limits";
 import type { NativeOfflineMediaPlugin } from "~/types/native-offline-media";
-import { idbResult, offlineMaxAge, scopedKeys, withOfflineStore } from "./offline-library";
+import {
+  idbResult,
+  offlineMaxAge,
+  readOfflineOwner,
+  scopedKeys,
+  withOfflineStore,
+} from "./offline-library";
 import { offlineAudioChanged } from "./music-query-keys";
 
 const quota = 256 * 1024 * 1024;
@@ -44,11 +50,38 @@ function locked<T>(scope: string, callback: () => Promise<T>): Promise<T | undef
 
 export function removeMediaScope(scope: string) {
   if (Capacitor.isNativePlatform()) {
-    return nativeMedia.clean({ scope, removeScope: true });
+    return nativeMedia.clean({ legacyScope: scope, removeScope: true });
   }
   return locked(scope, async () => {
     await (await mediaRoot()).removeEntry(scope, { recursive: true });
   });
+}
+
+export function readNativeOfflineStorageInfo(owner: string, legacyScope?: string) {
+  return nativeMedia.getStorageInfo({ owner, legacyScope });
+}
+
+export async function pickNativeOfflineDirectory(owner: string, legacyScope?: string) {
+  const result = await nativeMedia.pickDirectory({ owner, legacyScope });
+  if (!result.canceled && legacyScope) {
+    audioChanges.emit(legacyScope);
+  }
+  return result;
+}
+
+export async function resetNativeOfflineDirectory(owner: string, legacyScope?: string) {
+  const result = await nativeMedia.resetDirectory({ owner, legacyScope });
+  if (legacyScope) {
+    audioChanges.emit(legacyScope);
+  }
+  return result;
+}
+
+export async function clearNativeOfflineMedia(owner: string, legacyScope?: string) {
+  await nativeMedia.clean({ owner, legacyScope, removeScope: true });
+  if (legacyScope) {
+    audioChanges.emit(legacyScope);
+  }
 }
 
 async function deleteMedia(scope: string, directory: FileSystemDirectoryHandle, name: string) {
@@ -69,7 +102,13 @@ async function deleteMedia(scope: string, directory: FileSystemDirectoryHandle, 
 
 export function removeOfflineAudio(scope: string, id: string) {
   if (Capacitor.isNativePlatform()) {
-    return nativeMedia.removeAudio({ scope, id }).finally(() => audioChanges.emit(scope));
+    return (async () => {
+      const owner = await readOfflineOwner(scope);
+      if (!owner) {
+        return;
+      }
+      await nativeMedia.removeAudio({ owner, legacyScope: scope, id });
+    })().finally(() => audioChanges.emit(scope));
   }
   return locked(scope, async () => {
     const directory = await (await mediaRoot()).getDirectoryHandle(scope);
@@ -103,7 +142,13 @@ async function pruneMedia(
 
 export function pruneOfflineMedia(scope: string) {
   if (Capacitor.isNativePlatform()) {
-    return nativeMedia.clean({ scope }).finally(() => audioChanges.emit(scope));
+    return (async () => {
+      const owner = await readOfflineOwner(scope);
+      if (!owner) {
+        return;
+      }
+      await nativeMedia.clean({ owner, legacyScope: scope });
+    })().finally(() => audioChanges.emit(scope));
   }
   return locked(scope, async () => {
     const entries = await mediaEntries(scope);
@@ -150,11 +195,12 @@ async function readMedia(scope: string, directory: FileSystemDirectoryHandle, na
 export function readOfflineMedia(scope: string, kind: Kind, id: string) {
   return (async () => {
     if (Capacitor.isNativePlatform()) {
-      if (!(await withOfflineStore(scope, "readonly", () => true))) {
+      const owner = await readOfflineOwner(scope);
+      if (!owner) {
         return;
       }
-      const { uri } = await nativeMedia.read({ scope, kind, id });
-      if (await withOfflineStore(scope, "readonly", () => true)) {
+      const { uri } = await nativeMedia.read({ owner, legacyScope: scope, kind, id });
+      if ((await readOfflineOwner(scope)) === owner) {
         return uri;
       }
       return;
@@ -173,27 +219,20 @@ export async function readOfflineCovers(
   }
   if (Capacitor.isNativePlatform()) {
     try {
-      if (!(await withOfflineStore(scope, "readonly", () => true))) {
+      const owner = await readOfflineOwner(scope);
+      if (!owner) {
         return {};
       }
-      const results = await Promise.all(
-        ids.map(async (id) => {
-          const { uri } = await nativeMedia
-            .read({ scope, kind: "cover", id })
-            .catch(() => ({ uri: undefined }));
-          return [id, uri] as const;
-        }),
-      );
-      if (!(await withOfflineStore(scope, "readonly", () => true))) {
+      const { uris } = await nativeMedia.readMany({
+        owner,
+        legacyScope: scope,
+        kind: "cover",
+        ids: [...ids],
+      });
+      if ((await readOfflineOwner(scope)) !== owner) {
         return {};
       }
-      const covers: Record<string, string> = {};
-      for (const [id, uri] of results) {
-        if (uri) {
-          covers[id] = uri;
-        }
-      }
-      return covers;
+      return uris;
     } catch {
       return {};
     }
@@ -270,9 +309,10 @@ export async function readOfflineCovers(
 
 export async function readNativeAudioSources(scope: string) {
   try {
-    if (await withOfflineStore(scope, "readonly", () => true)) {
-      const { sources } = await nativeMedia.listAudio({ scope });
-      if (await withOfflineStore(scope, "readonly", () => true)) {
+    const owner = await readOfflineOwner(scope);
+    if (owner) {
+      const { sources } = await nativeMedia.listAudio({ owner, legacyScope: scope });
+      if ((await readOfflineOwner(scope)) === owner) {
         return sources;
       }
     }
@@ -326,16 +366,15 @@ export function cacheOfflineMedia(
     return (async () => {
       const origin = apiOrigin || location.origin;
       const source = new URL(url);
-      if (
-        source.origin !== origin ||
-        signal?.aborted ||
-        !(await withOfflineStore(scope, "readonly", () => true)) ||
-        signal?.aborted
-      ) {
+      if (source.origin !== origin || signal?.aborted) {
+        return;
+      }
+      const owner = await readOfflineOwner(scope);
+      if (!owner || signal?.aborted) {
         return;
       }
       await nativeMedia
-        .download({ scope, kind, id, origin, url })
+        .download({ owner, legacyScope: scope, kind, id, origin, url })
         .finally(() => audioChanges.emit(scope));
     })().catch(() => undefined);
   }

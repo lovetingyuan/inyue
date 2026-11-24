@@ -1,31 +1,102 @@
 package com.tingyuan.inyue;
 
+import android.app.Activity;
+import android.content.ContentResolver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.UriPermission;
+import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
+import android.provider.DocumentsContract;
+import androidx.activity.result.ActivityResult;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
 
 @CapacitorPlugin(name = "OfflineMedia")
 public class OfflineMediaPlugin extends Plugin {
-    private static final long MAX_AGE = 30L * 24 * 60 * 60 * 1000;
-    private static final long QUOTA = 256L * 1024 * 1024;
+    private static final String PREFS_NAME = "inyue_offline_media";
+    private static final String KEY_TREE_URI = "tree_uri";
+    private static final String NOMEDIA = ".nomedia";
+    private static final long PRIVATE_QUOTA = 256L * 1024 * 1024;
     private static final Pattern ID = Pattern.compile("[a-f0-9-]{36}");
     private static final String[] AUDIO = { ".mp3" };
     private static final String[] COVERS = { ".jpg", ".png", ".webp" };
+    private static final String[] DOC_PROJECTION = {
+        DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+        DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+        DocumentsContract.Document.COLUMN_MIME_TYPE,
+        DocumentsContract.Document.COLUMN_SIZE,
+        DocumentsContract.Document.COLUMN_LAST_MODIFIED,
+    };
+
     private final ExecutorService writes = Executors.newSingleThreadExecutor();
+    private final Object safCacheLock = new Object();
+    private final Object legacyMigrationLock = new Object();
+    private String cachedTreeUri;
+    private String cachedOwnerKey;
+    private String cachedScopeDocId;
+    private Map<String, SafEntry> cachedSafEntries;
+
+    private static final class SafEntry {
+        final String documentId;
+        final Uri uri;
+        final long size;
+        final long lastModified;
+
+        SafEntry(String documentId, Uri uri, long size, long lastModified) {
+            this.documentId = documentId;
+            this.uri = uri;
+            this.size = size;
+            this.lastModified = lastModified;
+        }
+    }
+
+    private static final class SafScope {
+        final Uri treeUri;
+        final String rootDocId;
+        final String scopeDocId;
+        final Map<String, SafEntry> entries;
+
+        SafScope(Uri treeUri, String rootDocId, String scopeDocId, Map<String, SafEntry> entries) {
+            this.treeUri = treeUri;
+            this.rootDocId = rootDocId;
+            this.scopeDocId = scopeDocId;
+            this.entries = entries;
+        }
+    }
+
+    @Override
+    protected void handleOnResume() {
+        invalidateSafCache();
+    }
 
     @Override
     protected void handleOnDestroy() {
@@ -34,15 +105,27 @@ public class OfflineMediaPlugin extends Plugin {
 
     @PluginMethod
     public void read(PluginCall call) {
-        File directory = scope(call);
+        String ownerKey = ownerKey(call.getString("owner"));
+        String legacyScope = call.getString("legacyScope");
         String kind = call.getString("kind");
         String id = call.getString("id");
-        if (directory == null || !validKind(kind) || !validId(id)) {
+        if (ownerKey == null || !validKind(kind) || !validId(id)) {
             call.reject("Invalid media key");
             return;
         }
-        File file = cached(directory, kind, id);
+        migrateLegacyCache(ownerKey, legacyScope);
         JSObject result = new JSObject();
+        Uri treeUri = savedTreeUri();
+        SafScope saf = treeUri != null ? openSafScope(treeUri, ownerKey, false) : null;
+        if (saf != null) {
+            SafEntry entry = cachedSaf(saf.entries, kind, id);
+            if (entry != null) {
+                result.put("uri", entry.uri.toString());
+            }
+            call.resolve(result);
+            return;
+        }
+        File file = cachedFile(privateScopeDir(ownerKey), kind, id);
         if (file != null) {
             file.setLastModified(System.currentTimeMillis());
             result.put("uri", Uri.fromFile(file).toString());
@@ -51,36 +134,97 @@ public class OfflineMediaPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void readMany(PluginCall call) {
+        String ownerKey = ownerKey(call.getString("owner"));
+        String legacyScope = call.getString("legacyScope");
+        String kind = call.getString("kind");
+        JSArray ids = call.getArray("ids");
+        if (ownerKey == null || !validKind(kind) || ids == null) {
+            call.reject("Invalid media key");
+            return;
+        }
+        migrateLegacyCache(ownerKey, legacyScope);
+        JSObject uris = new JSObject();
+        Uri treeUri = savedTreeUri();
+        SafScope saf = treeUri != null ? openSafScope(treeUri, ownerKey, false) : null;
+        if (saf != null) {
+            for (int index = 0; index < ids.length(); index++) {
+                String id = ids.optString(index, "");
+                if (!validId(id)) continue;
+                SafEntry entry = cachedSaf(saf.entries, kind, id);
+                if (entry != null) {
+                    uris.put(id, entry.uri.toString());
+                }
+            }
+            call.resolve(new JSObject().put("uris", uris));
+            return;
+        }
+        File directory = privateScopeDir(ownerKey);
+        long now = System.currentTimeMillis();
+        for (int index = 0; index < ids.length(); index++) {
+            String id = ids.optString(index, "");
+            if (!validId(id)) continue;
+            File file = cachedFile(directory, kind, id);
+            if (file != null) {
+                file.setLastModified(now);
+                uris.put(id, Uri.fromFile(file).toString());
+            }
+        }
+        call.resolve(new JSObject().put("uris", uris));
+    }
+
+    @PluginMethod
     public void listAudio(PluginCall call) {
-        File directory = scope(call);
-        if (directory == null) {
+        String ownerKey = ownerKey(call.getString("owner"));
+        String legacyScope = call.getString("legacyScope");
+        if (ownerKey == null) {
             call.reject("Invalid media scope");
             return;
         }
+        migrateLegacyCache(ownerKey, legacyScope);
         JSObject sources = new JSObject();
-        for (File file : files(directory)) {
+        Uri treeUri = savedTreeUri();
+        SafScope saf = treeUri != null ? openSafScope(treeUri, ownerKey, false) : null;
+        if (saf != null) {
+            for (Map.Entry<String, SafEntry> item : saf.entries.entrySet()) {
+                String name = item.getKey();
+                if (!name.startsWith("audio-") || !name.endsWith(".mp3")) continue;
+                String id = name.substring(6, name.length() - 4);
+                SafEntry entry = item.getValue();
+                if (validId(id) && usableSize(entry.size, "audio")) {
+                    sources.put(id, entry.uri.toString());
+                }
+            }
+            call.resolve(new JSObject().put("sources", sources));
+            return;
+        }
+        for (File file : files(privateScopeDir(ownerKey))) {
             String name = file.getName();
             if (!name.startsWith("audio-") || !name.endsWith(".mp3")) continue;
             String id = name.substring(6, name.length() - 4);
-            if (validId(id) && usable(file, "audio")) sources.put(id, Uri.fromFile(file).toString());
+            if (validId(id) && usableSize(file.length(), "audio")) {
+                sources.put(id, Uri.fromFile(file).toString());
+            }
         }
         call.resolve(new JSObject().put("sources", sources));
     }
 
     @PluginMethod
     public void download(PluginCall call) {
-        File directory = scope(call);
+        String ownerKey = ownerKey(call.getString("owner"));
+        String legacyScope = call.getString("legacyScope");
         String kind = call.getString("kind");
         String id = call.getString("id");
-        if (directory == null || !validKind(kind) || !validId(id)) {
+        if (ownerKey == null || !validKind(kind) || !validId(id)) {
             call.reject("Invalid media key");
             return;
         }
         writes.execute(() -> {
             try {
-                save(directory, kind, id, call);
+                migrateLegacyCache(ownerKey, legacyScope);
+                save(ownerKey, kind, id, call);
                 call.resolve();
-            } catch (IOException | IllegalArgumentException error) {
+            } catch (IOException | IllegalArgumentException | SecurityException error) {
                 call.reject("Unable to cache media");
             }
         });
@@ -88,42 +232,207 @@ public class OfflineMediaPlugin extends Plugin {
 
     @PluginMethod
     public void removeAudio(PluginCall call) {
-        File directory = scope(call);
+        String ownerKey = ownerKey(call.getString("owner"));
+        String legacyScope = call.getString("legacyScope");
         String id = call.getString("id");
-        if (directory == null || !validId(id)) {
+        if (ownerKey == null || !validId(id)) {
             call.reject("Invalid media key");
             return;
         }
         writes.execute(() -> {
-            new File(directory, "audio-" + id + ".mp3").delete();
+            migrateLegacyCache(ownerKey, legacyScope);
+            String fileName = "audio-" + id + ".mp3";
+            Uri treeUri = savedTreeUri();
+            SafScope saf = treeUri != null ? openSafScope(treeUri, ownerKey, false) : null;
+            if (saf != null) {
+                SafEntry entry = saf.entries.get(fileName);
+                if (entry != null) {
+                    deleteSafDocument(entry.uri);
+                    removeSafCacheEntry(treeUri, ownerKey, fileName);
+                }
+            }
+            new File(privateScopeDir(ownerKey), fileName).delete();
             call.resolve();
         });
     }
 
     @PluginMethod
     public void clean(PluginCall call) {
-        File directory = scope(call);
-        if (directory == null) {
+        String owner = call.getString("owner");
+        String ownerKey = ownerKey(owner);
+        String legacyScope = call.getString("legacyScope");
+        boolean removeScope = Boolean.TRUE.equals(call.getBoolean("removeScope", false));
+        if (ownerKey == null && !validId(legacyScope)) {
             call.reject("Invalid media scope");
             return;
         }
-        boolean removeScope = Boolean.TRUE.equals(call.getBoolean("removeScope", false));
         writes.execute(() -> {
-            for (File file : files(directory)) {
-                if (removeScope || file.getName().endsWith(".part")) file.delete();
+            if (ownerKey == null) {
+                if (removeScope && validId(legacyScope)) {
+                    deleteDirectory(legacyCacheDir(legacyScope));
+                }
+                call.resolve();
+                return;
             }
-            if (removeScope) directory.delete();
-            else prune(directory, 0);
+            migrateLegacyCache(ownerKey, legacyScope);
+            cleanTempDir();
+            if (removeScope) {
+                Uri treeUri = savedTreeUri();
+                SafScope saf = treeUri != null ? openSafScope(treeUri, ownerKey, false) : null;
+                if (saf != null) {
+                    for (SafEntry entry : saf.entries.values()) {
+                        deleteSafDocument(entry.uri);
+                    }
+                    invalidateSafCache();
+                }
+                deleteDirectory(privateScopeDir(ownerKey));
+                call.resolve();
+                return;
+            }
+            File privateDir = privateScopeDir(ownerKey);
+            for (File file : files(privateDir)) {
+                if (file.getName().endsWith(".part")) {
+                    file.delete();
+                }
+            }
+            Uri treeUri = savedTreeUri();
+            if (treeUri == null || resolveRootDocId(treeUri) == null) {
+                prunePrivate(privateDir, 0);
+            }
             call.resolve();
         });
     }
 
-    private void save(File directory, String kind, String id, PluginCall call) throws IOException {
-        File existing = cached(directory, kind, id);
-        if (existing != null) {
-            existing.setLastModified(System.currentTimeMillis());
+    @PluginMethod
+    public void getStorageInfo(PluginCall call) {
+        String ownerKey = ownerKey(call.getString("owner"));
+        String legacyScope = call.getString("legacyScope");
+        if (ownerKey == null) {
+            call.reject("Invalid media scope");
             return;
         }
+        writes.execute(() -> {
+            migrateLegacyCache(ownerKey, legacyScope);
+            invalidateSafCache();
+            call.resolve(buildStorageInfo(ownerKey));
+        });
+    }
+
+    @PluginMethod
+    public void pickDirectory(PluginCall call) {
+        String ownerKey = ownerKey(call.getString("owner"));
+        if (ownerKey == null) {
+            call.reject("Invalid media scope");
+            return;
+        }
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        intent.addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION
+        );
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Uri current = savedTreeUri();
+            if (current != null && resolveRootDocId(current) != null) {
+                intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, current);
+            }
+        }
+        startActivityForResult(call, intent, "handlePickDirectory");
+    }
+
+    @ActivityCallback
+    private void handlePickDirectory(PluginCall call, ActivityResult result) {
+        if (call == null) {
+            return;
+        }
+        String ownerKey = ownerKey(call.getString("owner"));
+        String legacyScope = call.getString("legacyScope");
+        if (ownerKey == null) {
+            call.reject("Invalid media scope");
+            return;
+        }
+        Intent data = result.getData();
+        Uri pickedUri = data != null ? data.getData() : null;
+        if (result.getResultCode() != Activity.RESULT_OK || pickedUri == null) {
+            writes.execute(() -> {
+                JSObject info = buildStorageInfo(ownerKey);
+                info.put("canceled", true);
+                call.resolve(info);
+            });
+            return;
+        }
+        int rawFlags = data.getFlags()
+            & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        int persistFlags = rawFlags == 0
+            ? (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            : rawFlags;
+        try {
+            getContext().getContentResolver().takePersistableUriPermission(pickedUri, persistFlags);
+        } catch (SecurityException error) {
+            call.reject("无法获取目录持久访问权限");
+            return;
+        }
+        writes.execute(() -> {
+            Uri previousUri = savedTreeUri();
+            invalidateSafCache();
+            SafScope saf = openSafScope(pickedUri, ownerKey, true);
+            if (saf == null || saf.scopeDocId == null) {
+                if (previousUri == null || !previousUri.equals(pickedUri)) {
+                    releaseTreePermission(pickedUri);
+                }
+                call.reject("所选目录不可写入，请更换其他目录");
+                return;
+            }
+            saveTreeUri(pickedUri);
+            if (previousUri != null && !previousUri.equals(pickedUri)) {
+                releaseTreePermission(previousUri);
+            }
+            migrateLegacyCache(ownerKey, legacyScope);
+            int migratedAudio = migratePrivateToSaf(ownerKey, saf);
+            invalidateSafCache();
+            JSObject info = buildStorageInfo(ownerKey);
+            info.put("canceled", false);
+            info.put("migratedCount", migratedAudio);
+            call.resolve(info);
+        });
+    }
+
+    @PluginMethod
+    public void resetDirectory(PluginCall call) {
+        String ownerKey = ownerKey(call.getString("owner"));
+        String legacyScope = call.getString("legacyScope");
+        if (ownerKey == null) {
+            call.reject("Invalid media scope");
+            return;
+        }
+        writes.execute(() -> {
+            Uri previous = savedTreeUri();
+            clearTreeUri();
+            invalidateSafCache();
+            if (previous != null) {
+                releaseTreePermission(previous);
+            }
+            migrateLegacyCache(ownerKey, legacyScope);
+            call.resolve(buildStorageInfo(ownerKey));
+        });
+    }
+
+    private void save(String ownerKey, String kind, String id, PluginCall call) throws IOException {
+        Uri treeUri = savedTreeUri();
+        SafScope saf = treeUri != null ? openSafScope(treeUri, ownerKey, false) : null;
+        if (saf != null) {
+            if (cachedSaf(saf.entries, kind, id) != null) {
+                return;
+            }
+        } else {
+            File existing = cachedFile(privateScopeDir(ownerKey), kind, id);
+            if (existing != null) {
+                existing.setLastModified(System.currentTimeMillis());
+                return;
+            }
+        }
+
         URI source = URI.create(call.getString("url", ""));
         URI origin = URI.create(call.getString("origin", ""));
         boolean local = "http".equals(source.getScheme()) && "127.0.0.1".equals(source.getHost())
@@ -135,7 +444,12 @@ public class OfflineMediaPlugin extends Plugin {
             || !source.getRawPath().matches("/api/media/[a-f0-9-]{36}") || source.getRawQuery() == null) {
             throw new IOException("Invalid media source");
         }
-        if (!directory.mkdirs() && !directory.isDirectory()) throw new IOException("Missing cache directory");
+
+        File tmpDir = tempDir();
+        if (!tmpDir.mkdirs() && !tmpDir.isDirectory()) {
+            throw new IOException("Missing temp directory");
+        }
+
         HttpURLConnection request = (HttpURLConnection) source.toURL().openConnection();
         request.setConnectTimeout(5000);
         request.setReadTimeout(10000);
@@ -144,37 +458,563 @@ public class OfflineMediaPlugin extends Plugin {
         request.setRequestProperty("Accept-Encoding", "identity");
         File partial = null;
         try {
-            if (request.getResponseCode() != HttpURLConnection.HTTP_OK || request.getHeaderField("Content-Range") != null)
+            if (request.getResponseCode() != HttpURLConnection.HTTP_OK || request.getHeaderField("Content-Range") != null) {
                 throw new IOException("Invalid media response");
+            }
             String extension = extension(kind, request.getContentType());
             int length = request.getContentLength();
             int limit = maxBytes(kind);
-            if (extension == null || length == 0 || length > limit) throw new IOException("Invalid media headers");
-            partial = File.createTempFile("download-", ".part", directory);
+            if (extension == null || length == 0 || length > limit) {
+                throw new IOException("Invalid media headers");
+            }
+            partial = File.createTempFile("download-", ".part", tmpDir);
             int bytes = 0;
-            try (var input = request.getInputStream(); var output = new FileOutputStream(partial)) {
+            try (InputStream input = request.getInputStream(); OutputStream output = new FileOutputStream(partial)) {
                 byte[] buffer = new byte[32 * 1024];
                 int count;
                 while ((count = input.read(buffer)) != -1) {
                     bytes += count;
-                    if (bytes > limit || (length >= 0 && bytes > length)) throw new IOException("Media too large");
+                    if (bytes > limit || (length >= 0 && bytes > length)) {
+                        throw new IOException("Media too large");
+                    }
                     output.write(buffer, 0, count);
                 }
             }
-            if (bytes == 0 || (length >= 0 && bytes != length)) throw new IOException("Incomplete media");
-            prune(directory, bytes);
-            File file = new File(directory, kind + "-" + id + extension);
-            if (!partial.renameTo(file)) throw new IOException("Unable to commit media");
-            file.setLastModified(System.currentTimeMillis());
+            if (bytes == 0 || (length >= 0 && bytes != length)) {
+                throw new IOException("Incomplete media");
+            }
+
+            String fileName = kind + "-" + id + extension;
+            Uri activeTree = savedTreeUri();
+            SafScope writableSaf = activeTree != null ? openSafScope(activeTree, ownerKey, true) : null;
+            if (writableSaf != null && writableSaf.scopeDocId != null) {
+                commitToSaf(writableSaf, ownerKey, fileName, mimeType(extension), partial, bytes);
+                return;
+            }
+            File directory = privateScopeDir(ownerKey);
+            if (!directory.mkdirs() && !directory.isDirectory()) {
+                throw new IOException("Missing media directory");
+            }
+            prunePrivate(directory, bytes);
+            File target = new File(directory, fileName);
+            commitFile(partial, target);
+            target.setLastModified(System.currentTimeMillis());
         } finally {
             request.disconnect();
-            if (partial != null) partial.delete();
+            if (partial != null) {
+                partial.delete();
+            }
         }
     }
 
-    private File scope(PluginCall call) {
-        String scope = call.getString("scope");
-        return validId(scope) ? new File(getContext().getCacheDir(), "inyue-media/" + scope) : null;
+    private void commitToSaf(
+        SafScope saf,
+        String ownerKey,
+        String fileName,
+        String mime,
+        File source,
+        long bytes
+    ) throws IOException {
+        SafEntry existing = saf.entries.get(fileName);
+        if (existing != null) {
+            if (existing.size == bytes) {
+                return;
+            }
+            deleteSafDocument(existing.uri);
+            removeSafCacheEntry(saf.treeUri, ownerKey, fileName);
+        }
+        ContentResolver resolver = getContext().getContentResolver();
+        Uri scopeDocUri = DocumentsContract.buildDocumentUriUsingTree(saf.treeUri, saf.scopeDocId);
+        Uri created = DocumentsContract.createDocument(resolver, scopeDocUri, mime, fileName);
+        if (created == null) {
+            throw new IOException("Unable to create SAF document");
+        }
+        try (InputStream input = new FileInputStream(source); OutputStream output = resolver.openOutputStream(created, "w")) {
+            if (output == null) {
+                throw new IOException("Unable to open SAF output stream");
+            }
+            copyStream(input, output);
+        } catch (IOException | SecurityException error) {
+            deleteSafDocument(created);
+            throw error instanceof IOException ? (IOException) error : new IOException(error);
+        }
+        String docId = DocumentsContract.getDocumentId(created);
+        SafEntry entry = new SafEntry(docId, created, bytes, System.currentTimeMillis());
+        putSafCacheEntry(saf.treeUri, ownerKey, saf.scopeDocId, fileName, entry);
+    }
+
+    private int migratePrivateToSaf(String ownerKey, SafScope saf) {
+        File privateDir = privateScopeDir(ownerKey);
+        File[] list = files(privateDir);
+        int migratedAudio = 0;
+        for (File file : list) {
+            String name = file.getName();
+            String kind = kindOfFileName(name);
+            String ext = extensionOfFileName(name);
+            if (kind == null || ext == null || !usableSize(file.length(), kind)) {
+                if (name.endsWith(".part")) {
+                    file.delete();
+                }
+                continue;
+            }
+            SafEntry existing = saf.entries.get(name);
+            if (existing != null && usableSize(existing.size, kind)) {
+                file.delete();
+                continue;
+            }
+            try {
+                commitToSaf(saf, ownerKey, name, mimeType(ext), file, file.length());
+                if ("audio".equals(kind)) {
+                    migratedAudio++;
+                }
+                file.delete();
+            } catch (IOException | SecurityException ignored) {
+                // Keep private copy if migrating this file failed.
+            }
+        }
+        deleteDirectoryIfEmpty(privateDir);
+        return migratedAudio;
+    }
+
+    private void migrateLegacyCache(String ownerKey, String legacyScope) {
+        if (!validId(legacyScope)) {
+            return;
+        }
+        File legacyDir = legacyCacheDir(legacyScope);
+        if (!legacyDir.isDirectory()) {
+            return;
+        }
+        synchronized (legacyMigrationLock) {
+            if (!legacyDir.isDirectory()) {
+                return;
+            }
+            File targetDir = privateScopeDir(ownerKey);
+            if (!targetDir.mkdirs() && !targetDir.isDirectory()) {
+                return;
+            }
+            for (File file : files(legacyDir)) {
+                String name = file.getName();
+                String kind = kindOfFileName(name);
+                if (kind == null || !usableSize(file.length(), kind)) {
+                    file.delete();
+                    continue;
+                }
+                File target = new File(targetDir, name);
+                if (target.isFile() && usableSize(target.length(), kind)) {
+                    file.delete();
+                    continue;
+                }
+                try {
+                    long mtime = file.lastModified();
+                    commitFile(file, target);
+                    if (mtime > 0) {
+                        target.setLastModified(mtime);
+                    }
+                } catch (IOException ignored) {
+                    // Leave file in legacy directory for retry.
+                }
+            }
+            deleteDirectoryIfEmpty(legacyDir);
+            deleteDirectoryIfEmpty(legacyDir.getParentFile());
+        }
+    }
+
+    private JSObject buildStorageInfo(String ownerKey) {
+        Uri treeUri = savedTreeUri();
+        JSObject info = new JSObject();
+        int audioCount = 0;
+        long totalBytes = 0;
+        if (treeUri != null) {
+            SafScope saf = openSafScope(treeUri, ownerKey, false);
+            boolean available = saf != null;
+            info.put("mode", "directory");
+            info.put("directoryLabel", formatTreeLabel(treeUri, available));
+            info.put("directoryAvailable", available);
+            if (available) {
+                for (Map.Entry<String, SafEntry> item : saf.entries.entrySet()) {
+                    String name = item.getKey();
+                    String kind = kindOfFileName(name);
+                    SafEntry entry = item.getValue();
+                    if (kind == null || !usableSize(entry.size, kind)) continue;
+                    totalBytes += entry.size;
+                    if ("audio".equals(kind)) {
+                        audioCount++;
+                    }
+                }
+            } else {
+                long[] stats = privateStats(privateScopeDir(ownerKey));
+                audioCount = (int) stats[0];
+                totalBytes = stats[1];
+            }
+        } else {
+            info.put("mode", "private");
+            info.put("directoryAvailable", true);
+            long[] stats = privateStats(privateScopeDir(ownerKey));
+            audioCount = (int) stats[0];
+            totalBytes = stats[1];
+        }
+        info.put("audioCount", audioCount);
+        info.put("totalBytes", totalBytes);
+        return info;
+    }
+
+    private long[] privateStats(File directory) {
+        long audioCount = 0;
+        long totalBytes = 0;
+        for (File file : files(directory)) {
+            String kind = kindOfFileName(file.getName());
+            long length = file.length();
+            if (kind == null || !usableSize(length, kind)) continue;
+            totalBytes += length;
+            if ("audio".equals(kind)) {
+                audioCount++;
+            }
+        }
+        return new long[] { audioCount, totalBytes };
+    }
+
+    private SafScope openSafScope(Uri treeUri, String ownerKey, boolean create) {
+        String uriString = treeUri.toString();
+        synchronized (safCacheLock) {
+            if (uriString.equals(cachedTreeUri)
+                && ownerKey.equals(cachedOwnerKey)
+                && cachedSafEntries != null
+                && (!create || cachedScopeDocId != null)) {
+                String rootDocId = DocumentsContract.getTreeDocumentId(treeUri);
+                return new SafScope(treeUri, rootDocId, cachedScopeDocId, new HashMap<>(cachedSafEntries));
+            }
+        }
+
+        String rootDocId = resolveRootDocId(treeUri);
+        if (rootDocId == null) {
+            invalidateSafCache();
+            return null;
+        }
+
+        String scopeDocId = findChildDocumentId(treeUri, rootDocId, ownerKey, DocumentsContract.Document.MIME_TYPE_DIR);
+        if (scopeDocId == null) {
+            if (!create) {
+                Map<String, SafEntry> empty = new HashMap<>();
+                synchronized (safCacheLock) {
+                    cachedTreeUri = uriString;
+                    cachedOwnerKey = ownerKey;
+                    cachedScopeDocId = null;
+                    cachedSafEntries = empty;
+                }
+                return new SafScope(treeUri, rootDocId, null, new HashMap<>());
+            }
+            if (!ensureNoMedia(treeUri, rootDocId)) {
+                return null;
+            }
+            ContentResolver resolver = getContext().getContentResolver();
+            Uri rootDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootDocId);
+            Uri createdDir;
+            try {
+                createdDir = DocumentsContract.createDocument(
+                    resolver,
+                    rootDocUri,
+                    DocumentsContract.Document.MIME_TYPE_DIR,
+                    ownerKey
+                );
+            } catch (FileNotFoundException | RuntimeException error) {
+                return null;
+            }
+            if (createdDir == null) {
+                return null;
+            }
+            scopeDocId = DocumentsContract.getDocumentId(createdDir);
+            ensureNoMedia(treeUri, scopeDocId);
+        } else if (create) {
+            ensureNoMedia(treeUri, rootDocId);
+            ensureNoMedia(treeUri, scopeDocId);
+        }
+
+        Map<String, SafEntry> entries = querySafEntries(treeUri, scopeDocId);
+        if (entries == null) {
+            invalidateSafCache();
+            return null;
+        }
+        synchronized (safCacheLock) {
+            cachedTreeUri = uriString;
+            cachedOwnerKey = ownerKey;
+            cachedScopeDocId = scopeDocId;
+            cachedSafEntries = new HashMap<>(entries);
+        }
+        return new SafScope(treeUri, rootDocId, scopeDocId, entries);
+    }
+
+    private String resolveRootDocId(Uri treeUri) {
+        if (treeUri == null || !hasPersistedTreePermission(treeUri)) {
+            return null;
+        }
+        String rootDocId;
+        try {
+            rootDocId = DocumentsContract.getTreeDocumentId(treeUri);
+        } catch (IllegalArgumentException error) {
+            return null;
+        }
+        if (rootDocId == null || rootDocId.isEmpty()) {
+            return null;
+        }
+        Uri rootDocUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootDocId);
+        try (Cursor cursor = getContext().getContentResolver().query(
+            rootDocUri,
+            new String[] { DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_MIME_TYPE },
+            null,
+            null,
+            null
+        )) {
+            if (cursor == null || !cursor.moveToFirst()) {
+                return null;
+            }
+            String mime = cursor.getString(1);
+            return DocumentsContract.Document.MIME_TYPE_DIR.equals(mime) ? rootDocId : null;
+        } catch (RuntimeException error) {
+            return null;
+        }
+    }
+
+    private boolean hasPersistedTreePermission(Uri treeUri) {
+        List<UriPermission> permissions = getContext().getContentResolver().getPersistedUriPermissions();
+        for (UriPermission permission : permissions) {
+            if (treeUri.equals(permission.getUri()) && permission.isReadPermission() && permission.isWritePermission()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String findChildDocumentId(Uri treeUri, String parentDocId, String name, String expectedMime) {
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentDocId);
+        try (Cursor cursor = getContext().getContentResolver().query(
+            childrenUri,
+            new String[] {
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+            },
+            null,
+            null,
+            null
+        )) {
+            if (cursor == null) {
+                return null;
+            }
+            while (cursor.moveToNext()) {
+                String docId = cursor.getString(0);
+                String displayName = cursor.getString(1);
+                String mime = cursor.getString(2);
+                if (!name.equals(displayName)) continue;
+                if (expectedMime != null && !expectedMime.equals(mime)) continue;
+                return docId;
+            }
+        } catch (RuntimeException ignored) {
+            return null;
+        }
+        return null;
+    }
+
+    private boolean ensureNoMedia(Uri treeUri, String parentDocId) {
+        if (findChildDocumentId(treeUri, parentDocId, NOMEDIA, null) != null) {
+            return true;
+        }
+        Uri parentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentDocId);
+        try {
+            Uri created = DocumentsContract.createDocument(
+                getContext().getContentResolver(),
+                parentUri,
+                "application/octet-stream",
+                NOMEDIA
+            );
+            return created != null;
+        } catch (FileNotFoundException | RuntimeException error) {
+            return false;
+        }
+    }
+
+    private Map<String, SafEntry> querySafEntries(Uri treeUri, String scopeDocId) {
+        Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, scopeDocId);
+        Map<String, SafEntry> entries = new HashMap<>();
+        try (Cursor cursor = getContext().getContentResolver().query(childrenUri, DOC_PROJECTION, null, null, null)) {
+            if (cursor == null) {
+                return null;
+            }
+            while (cursor.moveToNext()) {
+                String docId = cursor.getString(0);
+                String displayName = cursor.getString(1);
+                String mime = cursor.getString(2);
+                long size = cursor.isNull(3) ? 0L : cursor.getLong(3);
+                long lastModified = cursor.isNull(4) ? 0L : cursor.getLong(4);
+                if (docId == null || displayName == null || DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
+                    continue;
+                }
+                if (NOMEDIA.equals(displayName) || displayName.endsWith(".part")) {
+                    continue;
+                }
+                Uri docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId);
+                entries.put(displayName, new SafEntry(docId, docUri, size, lastModified));
+            }
+            return entries;
+        } catch (RuntimeException error) {
+            return null;
+        }
+    }
+
+    private void deleteSafDocument(Uri docUri) {
+        try {
+            DocumentsContract.deleteDocument(getContext().getContentResolver(), docUri);
+        } catch (FileNotFoundException | RuntimeException ignored) {
+            // Document may have been removed externally.
+        }
+    }
+
+    private void invalidateSafCache() {
+        synchronized (safCacheLock) {
+            cachedTreeUri = null;
+            cachedOwnerKey = null;
+            cachedScopeDocId = null;
+            cachedSafEntries = null;
+        }
+    }
+
+    private void putSafCacheEntry(Uri treeUri, String ownerKey, String scopeDocId, String name, SafEntry entry) {
+        synchronized (safCacheLock) {
+            String uriString = treeUri.toString();
+            if (!uriString.equals(cachedTreeUri) || !ownerKey.equals(cachedOwnerKey)) {
+                cachedTreeUri = uriString;
+                cachedOwnerKey = ownerKey;
+                cachedSafEntries = new HashMap<>();
+            }
+            cachedScopeDocId = scopeDocId;
+            if (cachedSafEntries == null) {
+                cachedSafEntries = new HashMap<>();
+            }
+            cachedSafEntries.put(name, entry);
+        }
+    }
+
+    private void removeSafCacheEntry(Uri treeUri, String ownerKey, String name) {
+        synchronized (safCacheLock) {
+            if (treeUri.toString().equals(cachedTreeUri)
+                && ownerKey.equals(cachedOwnerKey)
+                && cachedSafEntries != null) {
+                cachedSafEntries.remove(name);
+            }
+        }
+    }
+
+    private Uri savedTreeUri() {
+        String raw = prefs().getString(KEY_TREE_URI, null);
+        if (raw == null || raw.isEmpty()) {
+            return null;
+        }
+        try {
+            return Uri.parse(raw);
+        } catch (RuntimeException error) {
+            return null;
+        }
+    }
+
+    private void saveTreeUri(Uri treeUri) {
+        prefs().edit().putString(KEY_TREE_URI, treeUri.toString()).apply();
+    }
+
+    private void clearTreeUri() {
+        prefs().edit().remove(KEY_TREE_URI).apply();
+    }
+
+    private void releaseTreePermission(Uri treeUri) {
+        try {
+            getContext().getContentResolver().releasePersistableUriPermission(
+                treeUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            );
+        } catch (SecurityException ignored) {
+            // Permission may already be revoked.
+        }
+    }
+
+    private SharedPreferences prefs() {
+        return getContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+    }
+
+    private String formatTreeLabel(Uri treeUri, boolean available) {
+        try {
+            String docId = DocumentsContract.getTreeDocumentId(treeUri);
+            if (docId != null && !docId.isEmpty()) {
+                int colon = docId.indexOf(':');
+                if (colon >= 0) {
+                    String volume = docId.substring(0, colon);
+                    String relative = docId.substring(colon + 1);
+                    if ("primary".equalsIgnoreCase(volume)) {
+                        return relative.isEmpty() ? "内部存储" : relative;
+                    }
+                    return relative.isEmpty() ? volume : volume + "/" + relative;
+                }
+                return docId;
+            }
+        } catch (IllegalArgumentException ignored) {
+            // Fall back to display name query below.
+        }
+        if (available) {
+            try {
+                String docId = DocumentsContract.getTreeDocumentId(treeUri);
+                Uri docUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, docId);
+                try (Cursor cursor = getContext().getContentResolver().query(
+                    docUri,
+                    new String[] { DocumentsContract.Document.COLUMN_DISPLAY_NAME },
+                    null,
+                    null,
+                    null
+                )) {
+                    if (cursor != null && cursor.moveToFirst()) {
+                        String name = cursor.getString(0);
+                        if (name != null && !name.isEmpty()) {
+                            return name;
+                        }
+                    }
+                }
+            } catch (RuntimeException ignored) {
+                // Fall back to generic label.
+            }
+        }
+        return "已选目录";
+    }
+
+    private File privateScopeDir(String ownerKey) {
+        return new File(getContext().getNoBackupFilesDir(), "inyue-media/" + ownerKey);
+    }
+
+    private File legacyCacheDir(String legacyScope) {
+        return new File(getContext().getCacheDir(), "inyue-media/" + legacyScope);
+    }
+
+    private File tempDir() {
+        return new File(getContext().getCacheDir(), "inyue-media-tmp");
+    }
+
+    private void cleanTempDir() {
+        File dir = tempDir();
+        for (File file : files(dir)) {
+            file.delete();
+        }
+    }
+
+    private static String ownerKey(String owner) {
+        if (owner == null || owner.isEmpty() || owner.length() > 256) {
+            return null;
+        }
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(owner.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(32);
+            for (int index = 0; index < 16; index++) {
+                hex.append(String.format(Locale.ROOT, "%02x", hash[index]));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException error) {
+            return null;
+        }
     }
 
     private static boolean validId(String id) {
@@ -189,6 +1029,10 @@ public class OfflineMediaPlugin extends Plugin {
         return ("audio".equals(kind) ? 15 : 1) * 1024 * 1024;
     }
 
+    private static boolean usableSize(long length, String kind) {
+        return length > 0 && length <= maxBytes(kind);
+    }
+
     private static String extension(String kind, String type) {
         if (type == null) return null;
         String mime = type.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
@@ -201,33 +1045,125 @@ public class OfflineMediaPlugin extends Plugin {
         };
     }
 
-    private static File[] files(File directory) {
-        File[] files = directory.listFiles(File::isFile);
-        return files == null ? new File[0] : files;
+    private static String mimeType(String extension) {
+        return switch (extension) {
+            case ".mp3" -> "audio/mpeg";
+            case ".jpg" -> "image/jpeg";
+            case ".png" -> "image/png";
+            case ".webp" -> "image/webp";
+            default -> "application/octet-stream";
+        };
     }
 
-    private static boolean usable(File file, String kind) {
-        long length = file.length();
-        return length > 0 && length <= maxBytes(kind) && file.lastModified() > System.currentTimeMillis() - MAX_AGE;
-    }
-
-    private static File cached(File directory, String kind, String id) {
-        for (String extension : "audio".equals(kind) ? AUDIO : COVERS) {
-            File file = new File(directory, kind + "-" + id + extension);
-            if (usable(file, kind)) return file;
+    private static String kindOfFileName(String name) {
+        if (name.startsWith("audio-") && name.endsWith(".mp3")) {
+            String id = name.substring(6, name.length() - 4);
+            return validId(id) ? "audio" : null;
+        }
+        if (name.startsWith("cover-")) {
+            for (String ext : COVERS) {
+                if (name.endsWith(ext)) {
+                    String id = name.substring(6, name.length() - ext.length());
+                    return validId(id) ? "cover" : null;
+                }
+            }
         }
         return null;
     }
 
-    private static void prune(File directory, long incoming) {
-        File[] files = directory.listFiles(file -> file.isFile() && !file.getName().endsWith(".part"));
-        if (files == null) return;
-        Arrays.sort(files, Comparator.comparingLong(File::lastModified));
+    private static String extensionOfFileName(String name) {
+        if (name.endsWith(".mp3")) return ".mp3";
+        for (String ext : COVERS) {
+            if (name.endsWith(ext)) return ext;
+        }
+        return null;
+    }
+
+    private static SafEntry cachedSaf(Map<String, SafEntry> entries, String kind, String id) {
+        for (String extension : "audio".equals(kind) ? AUDIO : COVERS) {
+            SafEntry entry = entries.get(kind + "-" + id + extension);
+            if (entry != null && usableSize(entry.size, kind)) {
+                return entry;
+            }
+        }
+        return null;
+    }
+
+    private static File cachedFile(File directory, String kind, String id) {
+        for (String extension : "audio".equals(kind) ? AUDIO : COVERS) {
+            File file = new File(directory, kind + "-" + id + extension);
+            if (file.isFile() && usableSize(file.length(), kind)) {
+                return file;
+            }
+        }
+        return null;
+    }
+
+    private static File[] files(File directory) {
+        File[] list = directory.listFiles(File::isFile);
+        return list == null ? new File[0] : list;
+    }
+
+    private static void commitFile(File source, File target) throws IOException {
+        if (target.exists()) {
+            target.delete();
+        }
+        if (source.renameTo(target)) {
+            return;
+        }
+        try (InputStream input = new FileInputStream(source); OutputStream output = new FileOutputStream(target)) {
+            copyStream(input, output);
+        } catch (IOException error) {
+            target.delete();
+            throw error;
+        }
+        source.delete();
+    }
+
+    private static void copyStream(InputStream input, OutputStream output) throws IOException {
+        byte[] buffer = new byte[32 * 1024];
+        int count;
+        while ((count = input.read(buffer)) != -1) {
+            output.write(buffer, 0, count);
+        }
+        output.flush();
+    }
+
+    private static void deleteDirectory(File directory) {
+        if (directory == null || !directory.exists()) {
+            return;
+        }
+        File[] children = directory.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                if (child.isDirectory()) {
+                    deleteDirectory(child);
+                } else {
+                    child.delete();
+                }
+            }
+        }
+        directory.delete();
+    }
+
+    private static void deleteDirectoryIfEmpty(File directory) {
+        if (directory == null || !directory.isDirectory()) {
+            return;
+        }
+        String[] children = directory.list();
+        if (children != null && children.length == 0) {
+            directory.delete();
+        }
+    }
+
+    private static void prunePrivate(File directory, long incoming) {
+        File[] list = directory.listFiles(file -> file.isFile() && !file.getName().endsWith(".part"));
+        if (list == null) return;
+        Arrays.sort(list, Comparator.comparingLong(File::lastModified));
         long used = incoming;
-        for (File file : files) used += file.length();
-        long oldest = System.currentTimeMillis() - MAX_AGE;
-        for (File file : files) {
-            if (used <= QUOTA && file.lastModified() > oldest) break;
+        for (File file : list) used += file.length();
+        for (File file : list) {
+            if (used <= PRIVATE_QUOTA) break;
             long bytes = file.length();
             if (file.delete()) used -= bytes;
         }

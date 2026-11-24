@@ -237,6 +237,10 @@ export const usePlayerStore = defineStore("player", () => {
     }
   }
 
+  function isNativeLocalUri(url: string) {
+    return url.startsWith("file://") || url.startsWith("content://");
+  }
+
   async function cachePlayingTrack(track: Track) {
     const scope = useSessionStore().offlineScope;
     const signal = mediaWrites?.signal;
@@ -246,7 +250,7 @@ export const usePlayerStore = defineStore("player", () => {
       app.offline ||
       audioUrl ||
       !track.url ||
-      track.url.startsWith("file://")
+      isNativeLocalUri(track.url)
     ) {
       return;
     }
@@ -317,7 +321,7 @@ export const usePlayerStore = defineStore("player", () => {
           return;
         }
         const track = tracks.value.find((item) => item.id === trackId);
-        if (!track || track.url.startsWith("file://")) {
+        if (!track || isNativeLocalUri(track.url)) {
           return;
         }
         const cached = await nativeCachedTrack(track);
@@ -348,7 +352,7 @@ export const usePlayerStore = defineStore("player", () => {
       ) {
         nativeResumeAfterError ||= playing.value || loading.value;
         const track = tracks.value.find((item) => item.id === status.trackId);
-        if (track?.url.startsWith("file://") && !app.offline) {
+        if (track && isNativeLocalUri(track.url) && !app.offline) {
           const time = track.id === id.value ? (sampledPosition.value ?? position.value) : 0;
           void run(async () => {
             if (await nativeCachedTrack(track)) {
@@ -388,7 +392,7 @@ export const usePlayerStore = defineStore("player", () => {
         }
         if (status.msgType === eventType.RMXSTATUS_PLAYING) {
           const track = tracks.value.find((item) => item.id === status.trackId);
-          if (track?.url.startsWith("file://")) {
+          if (track && isNativeLocalUri(track.url)) {
             void nativeCachedTrack(track).catch(() => undefined);
           } else if (track) {
             void cachePlayingTrack(track).catch(() => undefined);

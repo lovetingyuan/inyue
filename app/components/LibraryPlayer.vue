@@ -187,7 +187,7 @@ async function cycleMode() {
       <div
         v-if="track"
         data-drawer-gesture-ignore
-        class="relative grid grid-cols-[minmax(0,1fr)_auto_6rem] items-center gap-x-2 gap-y-1 rounded-box bg-player-background px-2.5 py-2 text-neutral-content shadow-md @min-[40rem]/player:px-4 @min-[48rem]/player:grid-cols-[minmax(0,1fr)_minmax(14rem,1.4fr)_minmax(0,1fr)]"
+        class="relative grid grid-cols-[minmax(0,1fr)_auto_6rem] items-center gap-x-2 gap-y-1 rounded-box bg-player-background px-2.5 pt-3 pb-1.5 text-neutral-content shadow-md @min-[40rem]/player:px-4 @min-[48rem]/player:grid-cols-[minmax(0,1fr)_minmax(14rem,1.4fr)_minmax(0,1fr)] @min-[48rem]/player:pb-3"
       >
         <div
           role="status"
@@ -301,12 +301,15 @@ async function cycleMode() {
               <ListMusic class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
             </button>
           </div>
-          <PlaybackProgress layout="inline" class="@max-[48rem]/player:col-span-2" />
+          <PlaybackProgress
+            layout="inline"
+            class="@max-[48rem]/player:col-span-2 @min-[48rem]/player:-mb-1.5"
+          />
         </div>
         <div class="flex min-w-0 items-center justify-end @min-[48rem]/player:gap-2">
           <div class="flex min-w-0 items-center gap-1">
             <AsyncButton
-              class="btn btn-ghost btn-circle btn-sm shrink-0 text-neutral-content hover:bg-neutral-content/14"
+              class="btn btn-ghost btn-circle btn-sm shrink-0 text-neutral-content hover:bg-neutral-content/14 @max-[48rem]/player:-my-1"
               :aria-label="muteLabel"
               :title="muteLabel"
               :action="toggleMute"

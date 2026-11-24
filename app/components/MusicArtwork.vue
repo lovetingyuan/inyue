@@ -5,7 +5,9 @@ import { X } from "@lucide/vue";
 import { Capacitor } from "@capacitor/core";
 const props = defineProps<{ src?: string | null; zoomable?: boolean }>();
 const artwork = computed(() =>
-  props.src?.startsWith("file://") && Capacitor.isNativePlatform()
+  props.src &&
+  (props.src.startsWith("file://") || props.src.startsWith("content://")) &&
+  Capacitor.isNativePlatform()
     ? Capacitor.convertFileSrc(props.src)
     : (props.src ?? undefined),
 );

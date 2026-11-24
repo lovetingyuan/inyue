@@ -101,6 +101,20 @@ export function withOfflineStore<T>(
   });
 }
 
+export function readOfflineOwner(scope: string) {
+  return transaction("readonly", async (store) => {
+    const state = await getState(store);
+    if (
+      state?.revision !== scope ||
+      !state.profile ||
+      (!Capacitor.isNativePlatform() && state.profile.expiresAt <= Date.now())
+    ) {
+      return;
+    }
+    return state.profile.account.id;
+  });
+}
+
 function songKey(scope: string, id: string) {
   return `${scope}/song/${id}`;
 }

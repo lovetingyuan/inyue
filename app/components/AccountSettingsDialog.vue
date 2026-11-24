@@ -5,6 +5,7 @@ import { useAppStore } from "~/stores/app";
 import AccountAvatar from "~/components/AccountAvatar.vue";
 import AccountProfileDialog from "~/components/AccountProfileDialog.vue";
 import LogoutConfirmDialog from "~/components/LogoutConfirmDialog.vue";
+import OfflineCacheSettings from "~/components/OfflineCacheSettings.vue";
 import ThemeColorPicker from "~/components/ThemeColorPicker.vue";
 import { computed, nextTick, onMounted, ref, shallowRef, useId, useTemplateRef } from "vue";
 import { usePreferredDark } from "@vueuse/core";
@@ -40,6 +41,7 @@ const githubIcon = computed(() =>
 );
 const profile = useTemplateRef<HTMLDialogElement>("profile");
 const profileEditor = useTemplateRef("profileEditor");
+const offlineCache = useTemplateRef("offlineCache");
 const logoutConfirm = useTemplateRef<LogoutConfirmDialogExpose>("logoutConfirm");
 const accountTab = useTemplateRef<HTMLButtonElement>("accountTab");
 const aboutTab = useTemplateRef<HTMLButtonElement>("aboutTab");
@@ -135,6 +137,7 @@ defineExpose({
     buildInfo.value ??= window.__INYUE_BUILD_INFO__;
     activeTab.value = "account";
     shareFeedback.value = undefined;
+    void offlineCache.value?.refresh(true);
     showMusicDialog(profile.value);
   },
   close: () => profile.value?.close(),
@@ -245,6 +248,8 @@ defineExpose({
               :max="account.storage.quotaBytes"
             />
           </label>
+
+          <OfflineCacheSettings v-if="native" ref="offlineCache" :account-id="account.id" />
 
           <div class="grid gap-1.5">
             <span :id="themeLabelId" class="text-sm font-medium">主题</span>
