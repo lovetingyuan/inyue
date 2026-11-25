@@ -9,7 +9,7 @@ import { defineNuxtConfig } from "nuxt/config";
 import { addVitePlugin } from "nuxt/kit";
 import { vueVitePlugin } from "vite-plugin-dom-source";
 import webManifest from "./public/manifest.json";
-import { appName, officialSiteUrl } from "./shared/app-brand";
+import { appDescription, appName, officialSiteUrl } from "./shared/app-brand";
 import { devPort } from "./shared/dev-server.mjs";
 import { defaultQuotaBytes } from "./shared/library-limits";
 
@@ -77,7 +77,9 @@ export default defineNuxtConfig({
         { rel: "apple-touch-icon", sizes: "180x180", href: "/apple-touch-icon.png" },
       ],
       meta: [
+        { name: "description", content: appDescription },
         { property: "og:title", content: appName },
+        { property: "og:description", content: appDescription },
         { property: "og:type", content: "website" },
         { property: "og:url", content: officialSiteUrl },
         { property: "og:image", content: `${officialSiteUrl}/assets/imgs/logo.png` },
@@ -135,6 +137,7 @@ export default defineNuxtConfig({
     "nitro-cloudflare-dev",
     "@sentry/nuxt/module",
     "@nuxtjs/better-auth",
+    "@nuxtjs/critters",
     "@vite-pwa/nuxt",
     "@pinia/nuxt",
     "@pinia/colada-nuxt",
@@ -151,6 +154,21 @@ export default defineNuxtConfig({
       }
     },
   ],
+
+  critters: {
+    config: {
+      preload: "swap",
+      inlineThreshold: 4096,
+      allowRules: [
+        // Preserve daisyUI v5 theme tokens and Tailwind v4 :where() utilities that beasties strips.
+        /^:where\(:root\b/,
+        /^:root:not\(\[data-theme\]\)/,
+        /\[data-theme=/,
+        /\[data-theme-color=/,
+        /^:where\(\.(?:space-|divide-|drawer-side|btn|join)\b/,
+      ],
+    },
+  },
 
   sentry: { sourcemaps: { disable: true } },
   sourcemap: { client: sentrySourcemaps ? "hidden" : false },

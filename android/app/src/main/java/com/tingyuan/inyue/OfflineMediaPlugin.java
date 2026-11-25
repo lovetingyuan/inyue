@@ -1,7 +1,10 @@
 package com.tingyuan.inyue;
 
 import android.app.Activity;
+import android.app.DownloadManager;
+import android.content.ActivityNotFoundException;
 import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -9,8 +12,12 @@ import android.content.UriPermission;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
 import android.provider.DocumentsContract;
+import android.provider.MediaStore;
+import android.provider.OpenableColumns;
 import androidx.activity.result.ActivityResult;
+import androidx.annotation.RequiresApi;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -36,6 +43,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
@@ -60,10 +68,35 @@ public class OfflineMediaPlugin extends Plugin {
     private final ExecutorService writes = Executors.newSingleThreadExecutor();
     private final Object safCacheLock = new Object();
     private final Object legacyMigrationLock = new Object();
+    private final Map<String, PendingExport> pendingExports = new ConcurrentHashMap<>();
     private String cachedTreeUri;
     private String cachedOwnerKey;
     private String cachedScopeDocId;
     private Map<String, SafEntry> cachedSafEntries;
+
+    private static final class PendingExport {
+        final File file;
+        final boolean deleteAfter;
+        final String fileName;
+
+        PendingExport(File file, boolean deleteAfter, String fileName) {
+            this.file = file;
+            this.deleteAfter = deleteAfter;
+            this.fileName = fileName;
+        }
+    }
+
+    private static final class DownloadedMedia {
+        final File file;
+        final String extension;
+        final int bytes;
+
+        DownloadedMedia(File file, String extension, int bytes) {
+            this.file = file;
+            this.extension = extension;
+            this.bytes = bytes;
+        }
+    }
 
     private static final class SafEntry {
         final String documentId;
@@ -100,6 +133,12 @@ public class OfflineMediaPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
+        for (PendingExport pending : pendingExports.values()) {
+            if (pending.deleteAfter && pending.file != null) {
+                pending.file.delete();
+            }
+        }
+        pendingExports.clear();
         writes.shutdown();
     }
 
@@ -226,6 +265,144 @@ public class OfflineMediaPlugin extends Plugin {
                 call.resolve();
             } catch (IOException | IllegalArgumentException | SecurityException error) {
                 call.reject("Unable to cache media");
+            }
+        });
+    }
+
+    @PluginMethod
+    public void exportAudio(PluginCall call) {
+        String ownerKey = ownerKey(call.getString("owner"));
+        String legacyScope = call.getString("legacyScope");
+        String id = call.getString("id");
+        String url = call.getString("url");
+        String origin = call.getString("origin");
+        if (!validId(id)) {
+            call.reject("Invalid media key");
+            return;
+        }
+        String safeFileName = sanitizeExportFileName(call.getString("fileName"));
+        writes.execute(() -> {
+            try {
+                SafEntry safEntry = null;
+                File privateFile = null;
+                if (ownerKey != null) {
+                    migrateLegacyCache(ownerKey, legacyScope);
+                    Uri treeUri = savedTreeUri();
+                    SafScope saf = treeUri != null ? openSafScope(treeUri, ownerKey, false) : null;
+                    if (saf != null) {
+                        safEntry = cachedSaf(saf.entries, "audio", id);
+                    } else {
+                        privateFile = cachedFile(privateScopeDir(ownerKey), "audio", id);
+                    }
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    String exportedName = exportToMediaStoreDownloads(safeFileName, safEntry, privateFile, url, origin);
+                    JSObject result = new JSObject();
+                    result.put("canceled", false);
+                    result.put("fileName", exportedName);
+                    result.put("directory", Environment.DIRECTORY_DOWNLOADS);
+                    call.resolve(result);
+                    return;
+                }
+
+                PendingExport pending = stageExportFile(safeFileName, safEntry, privateFile, url, origin);
+                Activity activity = getActivity();
+                if (activity == null || activity.isFinishing()) {
+                    if (pending.deleteAfter) {
+                        pending.file.delete();
+                    }
+                    call.reject("Unable to export audio");
+                    return;
+                }
+                pendingExports.put(call.getCallbackId(), pending);
+                activity.runOnUiThread(() -> {
+                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("audio/mpeg");
+                    intent.putExtra(Intent.EXTRA_TITLE, safeFileName);
+                    startActivityForResult(call, intent, "handleExportAudioDocument");
+                });
+            } catch (IOException | IllegalArgumentException | SecurityException error) {
+                call.reject("下载歌曲失败，请稍后重试。");
+            }
+        });
+    }
+
+    @ActivityCallback
+    private void handleExportAudioDocument(PluginCall call, ActivityResult result) {
+        if (call == null) {
+            return;
+        }
+        PendingExport pending = pendingExports.remove(call.getCallbackId());
+        if (pending == null) {
+            call.reject("下载歌曲失败，请稍后重试。");
+            return;
+        }
+        Intent data = result.getData();
+        Uri targetUri = data != null ? data.getData() : null;
+        if (result.getResultCode() != Activity.RESULT_OK || targetUri == null) {
+            if (pending.deleteAfter) {
+                pending.file.delete();
+            }
+            call.resolve(new JSObject().put("canceled", true));
+            return;
+        }
+        writes.execute(() -> {
+            try {
+                ContentResolver resolver = getContext().getContentResolver();
+                try (
+                    InputStream input = new FileInputStream(pending.file);
+                    OutputStream output = resolver.openOutputStream(targetUri, "w")
+                ) {
+                    if (output == null) {
+                        throw new IOException("Unable to open destination stream");
+                    }
+                    copyStream(input, output);
+                }
+                String actualName = queryDisplayName(resolver, targetUri);
+                JSObject response = new JSObject();
+                response.put("canceled", false);
+                response.put("fileName", actualName != null ? actualName : pending.fileName);
+                call.resolve(response);
+            } catch (IOException | SecurityException error) {
+                call.reject("下载歌曲失败，请稍后重试。");
+            } finally {
+                if (pending.deleteAfter) {
+                    pending.file.delete();
+                }
+            }
+        });
+    }
+
+    @PluginMethod
+    public void openDownloads(PluginCall call) {
+        Activity activity = getActivity();
+        if (activity == null || activity.isFinishing()) {
+            call.reject("无法打开下载目录");
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            try {
+                Intent downloadsIntent = new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS);
+                activity.startActivity(downloadsIntent);
+                call.resolve();
+                return;
+            } catch (ActivityNotFoundException | SecurityException ignored) {
+                // Fall back to opening the primary Download directory in DocumentsUI.
+            }
+            try {
+                Uri downloadsUri = DocumentsContract.buildDocumentUri(
+                    "com.android.externalstorage.documents",
+                    "primary:" + Environment.DIRECTORY_DOWNLOADS
+                );
+                Intent folderIntent = new Intent(Intent.ACTION_VIEW);
+                folderIntent.setDataAndType(downloadsUri, DocumentsContract.Document.MIME_TYPE_DIR);
+                folderIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                activity.startActivity(folderIntent);
+                call.resolve();
+            } catch (ActivityNotFoundException | SecurityException error) {
+                call.reject("无法打开下载目录");
             }
         });
     }
@@ -433,8 +610,41 @@ public class OfflineMediaPlugin extends Plugin {
             }
         }
 
-        URI source = URI.create(call.getString("url", ""));
-        URI origin = URI.create(call.getString("origin", ""));
+        DownloadedMedia downloaded = downloadToTempFile(kind, call.getString("url", ""), call.getString("origin", ""));
+        try {
+            String fileName = kind + "-" + id + downloaded.extension;
+            Uri activeTree = savedTreeUri();
+            SafScope writableSaf = activeTree != null ? openSafScope(activeTree, ownerKey, true) : null;
+            if (writableSaf != null && writableSaf.scopeDocId != null) {
+                commitToSaf(
+                    writableSaf,
+                    ownerKey,
+                    fileName,
+                    mimeType(downloaded.extension),
+                    downloaded.file,
+                    downloaded.bytes
+                );
+                return;
+            }
+            File directory = privateScopeDir(ownerKey);
+            if (!directory.mkdirs() && !directory.isDirectory()) {
+                throw new IOException("Missing media directory");
+            }
+            prunePrivate(directory, downloaded.bytes);
+            File target = new File(directory, fileName);
+            commitFile(downloaded.file, target);
+            target.setLastModified(System.currentTimeMillis());
+        } finally {
+            downloaded.file.delete();
+        }
+    }
+
+    private DownloadedMedia downloadToTempFile(String kind, String rawUrl, String rawOrigin) throws IOException {
+        if (rawUrl == null || rawOrigin == null || rawUrl.isEmpty() || rawOrigin.isEmpty()) {
+            throw new IOException("Missing media source");
+        }
+        URI source = URI.create(rawUrl);
+        URI origin = URI.create(rawOrigin);
         boolean local = "http".equals(source.getScheme()) && "127.0.0.1".equals(source.getHost())
             && (source.getPort() == 8794 || source.getPort() == 5223);
         if ((!local && !"https".equals(source.getScheme())) || source.getHost() == null
@@ -457,6 +667,7 @@ public class OfflineMediaPlugin extends Plugin {
         request.setUseCaches(false);
         request.setRequestProperty("Accept-Encoding", "identity");
         File partial = null;
+        boolean success = false;
         try {
             if (request.getResponseCode() != HttpURLConnection.HTTP_OK || request.getHeaderField("Content-Range") != null) {
                 throw new IOException("Invalid media response");
@@ -483,28 +694,142 @@ public class OfflineMediaPlugin extends Plugin {
             if (bytes == 0 || (length >= 0 && bytes != length)) {
                 throw new IOException("Incomplete media");
             }
-
-            String fileName = kind + "-" + id + extension;
-            Uri activeTree = savedTreeUri();
-            SafScope writableSaf = activeTree != null ? openSafScope(activeTree, ownerKey, true) : null;
-            if (writableSaf != null && writableSaf.scopeDocId != null) {
-                commitToSaf(writableSaf, ownerKey, fileName, mimeType(extension), partial, bytes);
-                return;
-            }
-            File directory = privateScopeDir(ownerKey);
-            if (!directory.mkdirs() && !directory.isDirectory()) {
-                throw new IOException("Missing media directory");
-            }
-            prunePrivate(directory, bytes);
-            File target = new File(directory, fileName);
-            commitFile(partial, target);
-            target.setLastModified(System.currentTimeMillis());
+            success = true;
+            return new DownloadedMedia(partial, extension, bytes);
         } finally {
             request.disconnect();
-            if (partial != null) {
+            if (!success && partial != null) {
                 partial.delete();
             }
         }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private String exportToMediaStoreDownloads(
+        String fileName,
+        SafEntry safEntry,
+        File privateFile,
+        String url,
+        String origin
+    ) throws IOException {
+        if (safEntry != null) {
+            try (InputStream input = getContext().getContentResolver().openInputStream(safEntry.uri)) {
+                if (input == null) {
+                    throw new IOException("Unable to read cached audio");
+                }
+                return writeToMediaStoreDownloads(fileName, input);
+            }
+        }
+        if (privateFile != null) {
+            try (InputStream input = new FileInputStream(privateFile)) {
+                return writeToMediaStoreDownloads(fileName, input);
+            }
+        }
+        DownloadedMedia downloaded = downloadToTempFile("audio", url, origin);
+        try (InputStream input = new FileInputStream(downloaded.file)) {
+            return writeToMediaStoreDownloads(fileName, input);
+        } finally {
+            downloaded.file.delete();
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private String writeToMediaStoreDownloads(String fileName, InputStream input) throws IOException {
+        ContentResolver resolver = getContext().getContentResolver();
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
+        values.put(MediaStore.Downloads.MIME_TYPE, "audio/mpeg");
+        values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+        values.put(MediaStore.Downloads.IS_PENDING, 1);
+        Uri targetUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+        if (targetUri == null) {
+            throw new IOException("Unable to create download entry");
+        }
+        try (OutputStream output = resolver.openOutputStream(targetUri, "w")) {
+            if (output == null) {
+                throw new IOException("Unable to open download stream");
+            }
+            copyStream(input, output);
+        } catch (IOException | RuntimeException error) {
+            resolver.delete(targetUri, null, null);
+            throw error instanceof IOException ? (IOException) error : new IOException(error);
+        }
+        ContentValues completed = new ContentValues();
+        completed.put(MediaStore.Downloads.IS_PENDING, 0);
+        resolver.update(targetUri, completed, null, null);
+        String actualName = queryDisplayName(resolver, targetUri);
+        return actualName != null ? actualName : fileName;
+    }
+
+    private PendingExport stageExportFile(
+        String fileName,
+        SafEntry safEntry,
+        File privateFile,
+        String url,
+        String origin
+    ) throws IOException {
+        if (privateFile != null) {
+            return new PendingExport(privateFile, false, fileName);
+        }
+        if (safEntry != null) {
+            File tmpDir = tempDir();
+            if (!tmpDir.mkdirs() && !tmpDir.isDirectory()) {
+                throw new IOException("Missing temp directory");
+            }
+            File staged = File.createTempFile("export-", ".part", tmpDir);
+            try (
+                InputStream input = getContext().getContentResolver().openInputStream(safEntry.uri);
+                OutputStream output = new FileOutputStream(staged)
+            ) {
+                if (input == null) {
+                    throw new IOException("Unable to read cached audio");
+                }
+                copyStream(input, output);
+                return new PendingExport(staged, true, fileName);
+            } catch (IOException | RuntimeException error) {
+                staged.delete();
+                throw error instanceof IOException ? (IOException) error : new IOException(error);
+            }
+        }
+        DownloadedMedia downloaded = downloadToTempFile("audio", url, origin);
+        return new PendingExport(downloaded.file, true, fileName);
+    }
+
+    private static String queryDisplayName(ContentResolver resolver, Uri uri) {
+        try (Cursor cursor = resolver.query(uri, new String[] { OpenableColumns.DISPLAY_NAME }, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                String name = cursor.getString(0);
+                if (name != null && !name.isEmpty()) {
+                    return name;
+                }
+            }
+        } catch (RuntimeException ignored) {
+            // Fall back to requested file name.
+        }
+        return null;
+    }
+
+    private static String sanitizeExportFileName(String raw) {
+        String source = raw == null ? "" : raw;
+        StringBuilder builder = new StringBuilder(source.length());
+        for (int index = 0; index < source.length(); index++) {
+            char ch = source.charAt(index);
+            if (ch < 0x20 || ch == 0x7f || "<>:\"/\\|?*".indexOf(ch) >= 0) {
+                continue;
+            }
+            builder.append(ch);
+        }
+        String cleaned = builder.toString().replaceAll("\\s+", " ").replaceAll("^[.\\s]+|[.\\s]+$", "");
+        if (cleaned.toLowerCase(Locale.ROOT).endsWith(".mp3")) {
+            cleaned = cleaned.substring(0, cleaned.length() - 4).replaceAll("[.\\s]+$", "");
+        }
+        if (cleaned.length() > 120) {
+            cleaned = cleaned.substring(0, 120).replaceAll("[.\\s]+$", "");
+        }
+        if (cleaned.isEmpty()) {
+            cleaned = "未命名歌曲";
+        }
+        return cleaned + ".mp3";
     }
 
     private void commitToSaf(

@@ -17,6 +17,13 @@ export default defineNuxtPlugin({
     void import("@capacitor/app")
       .then(({ App }) =>
         App.addListener("backButton", ({ canGoBack }) => {
+          const openPopover = document.querySelector<HTMLElement>(
+            '[popover]:not([popover="manual"]):popover-open',
+          );
+          if (openPopover) {
+            openPopover.hidePopover();
+            return;
+          }
           if (closeTopMusicDialog()) {
             return;
           }

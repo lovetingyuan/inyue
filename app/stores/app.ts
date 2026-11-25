@@ -4,7 +4,7 @@ import { useTimeoutFn } from "@vueuse/core";
 import { defineStore } from "pinia";
 import type { AppTheme } from "~/types/native-theme";
 import type { AppThemeColor } from "~/types/theme";
-import type { AppToastMessage, AppToastTone } from "~/types/toast";
+import type { AppToastAction, AppToastMessage, AppToastTone } from "~/types/toast";
 import { defaultThemeColor } from "~/utils/theme-colors";
 
 export const useAppStore = defineStore("app", () => {
@@ -14,21 +14,33 @@ export const useAppStore = defineStore("app", () => {
   const themeColor = ref<AppThemeColor>(defaultThemeColor);
   const native = computed(() => Capacitor.isNativePlatform());
   const toast = shallowRef<AppToastMessage>();
+  const toastDuration = ref(3500);
   let toastId = 0;
 
   const { start: scheduleClearToast, stop: cancelClearToast } = useTimeoutFn(
     () => {
       toast.value = undefined;
     },
-    3500,
+    toastDuration,
     { immediate: false },
   );
 
-  function showToast(message: string, options: { tone?: AppToastTone; offline?: boolean } = {}) {
+  function showToast(
+    message: string,
+    options: {
+      tone?: AppToastTone;
+      offline?: boolean;
+      action?: AppToastAction;
+      duration?: number;
+    } = {},
+  ) {
     const tone = options.tone ?? "info";
     const isOfflineToast = options.offline ?? false;
+    toastDuration.value = options.duration ?? (options.action ? 5000 : 3500);
     if (
+      !options.action &&
       toast.value &&
+      !toast.value.action &&
       toast.value.message === message &&
       toast.value.tone === tone &&
       toast.value.offline === isOfflineToast
@@ -41,6 +53,7 @@ export const useAppStore = defineStore("app", () => {
       message,
       tone,
       offline: isOfflineToast,
+      action: options.action,
     };
     scheduleClearToast();
   }

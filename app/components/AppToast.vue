@@ -41,6 +41,15 @@ watch(
   },
   { flush: "post" },
 );
+
+function handleAction() {
+  const action = app.toast?.action;
+  if (!action) {
+    return;
+  }
+  app.clearToast();
+  void action.onClick();
+}
 </script>
 
 <template>
@@ -52,8 +61,8 @@ watch(
   >
     <div
       :key="app.toast.id"
-      class="alert gap-2 px-3.5 py-2.5 shadow-lg"
-      :class="toneClasses[app.toast.tone]"
+      class="alert max-w-[calc(100vw-2rem)] grid-flow-col items-center gap-2 px-3.5 py-2.5 shadow-lg"
+      :class="[toneClasses[app.toast.tone], app.toast.action && 'pointer-events-auto']"
       :role="app.toast.tone === 'error' || app.toast.tone === 'warning' ? 'alert' : 'status'"
     >
       <WifiOff
@@ -62,7 +71,15 @@ watch(
         :stroke-width="1.8"
         aria-hidden="true"
       />
-      <span>{{ app.toast.message }}</span>
+      <span class="min-w-0 wrap-anywhere">{{ app.toast.message }}</span>
+      <button
+        v-if="app.toast.action"
+        type="button"
+        class="btn btn-ghost btn-xs shrink-0 border-current/25 text-current hover:bg-current/15"
+        @click="handleAction"
+      >
+        {{ app.toast.action.label }}
+      </button>
     </div>
   </div>
 </template>

@@ -7,8 +7,16 @@ import { useSongDetailsState } from "~/composables/useLibraryQueries";
 import { useLibraryDelete } from "~/composables/useLibraryMutations";
 import SongPlaylistPicker from "~/components/SongPlaylistPicker.vue";
 import SongDetails from "~/components/SongDetails.vue";
-import { defineAsyncComponent, nextTick, onBeforeUnmount, ref, shallowRef, useTemplateRef } from "vue";
-import type { Song } from "~~/shared/types/library";
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onBeforeUnmount,
+  ref,
+  shallowRef,
+  useTemplateRef,
+} from "vue";
+import type { Song, SongDetails as SongDetailsData } from "~~/shared/types/library";
 
 const SongEditor = defineAsyncComponent(() => import("~/components/SongEditor.vue"));
 
@@ -21,7 +29,8 @@ const dialog = useTemplateRef("dialog");
 const songEditor = useTemplateRef("songEditor");
 const playlistPicker = useTemplateRef("playlistPicker");
 const editing = shallowRef<Song>();
-const selectedSong = shallowRef<Song>();
+const selectedSong = shallowRef<SongDetailsData>();
+const targetSong = computed(() => details.value ?? selectedSong.value);
 const panel = ref<"song" | "details" | "delete">();
 const libraryDelete = useLibraryDelete();
 const pending = libraryDelete.isLoading;
@@ -39,7 +48,7 @@ function openSong(song: Song) {
   panel.value = "song";
 }
 
-async function open(song: Song) {
+async function open(song: SongDetailsData) {
   selectedSong.value = song;
   library.songId = song.id;
   dialogError.value = "";
@@ -48,8 +57,47 @@ async function open(song: Song) {
   showMusicDialog(dialog.value);
 }
 
+async function openEdit(song: SongDetailsData) {
+  if (app.offline) {
+    return;
+  }
+  selectedSong.value = song;
+  editing.value = song;
+  library.songId = song.id;
+  dialogError.value = "";
+  panel.value = "song";
+  await nextTick();
+  showMusicDialog(dialog.value);
+}
+
+async function openPlaylists(song: SongDetailsData) {
+  if (app.offline) {
+    return;
+  }
+  selectedSong.value = song;
+  editing.value = undefined;
+  library.songId = song.id;
+  dialogError.value = "";
+  panel.value = undefined;
+  await nextTick();
+  await playlistPicker.value?.open();
+}
+
+async function openDelete(song: SongDetailsData) {
+  if (app.offline) {
+    return;
+  }
+  selectedSong.value = song;
+  editing.value = undefined;
+  library.songId = song.id;
+  dialogError.value = "";
+  panel.value = "delete";
+  await nextTick();
+  showMusicDialog(dialog.value);
+}
+
 async function removeSong() {
-  const id = details.value?.id;
+  const id = targetSong.value?.id;
   if (!id || pending.value || app.offline) {
     return;
   }
@@ -66,14 +114,14 @@ onBeforeUnmount(() => {
   library.songId = undefined;
 });
 
-defineExpose({ open });
+defineExpose({ open, openEdit, openPlaylists, openDelete });
 </script>
 
 <template>
   <dialog
     ref="dialog"
     class="modal modal-bottom sm:modal-middle"
-    :aria-label="panel === 'details' ? '歌曲详情' : '管理歌曲'"
+    :aria-label="panel === 'details' ? '歌曲详情' : panel === 'delete' ? '删除歌曲' : '编辑歌曲'"
     @cancel="(pending || songEditor?.busy) && $event.preventDefault()"
     @close="closePanel"
   >
@@ -103,7 +151,7 @@ defineExpose({ open });
         @playlists="playlistPicker?.open()"
       />
       <div v-else-if="panel === 'delete'" class="grid gap-3">
-        <h2 class="text-lg font-semibold">删除《{{ details?.title }}》？</h2>
+        <h2 class="text-lg font-semibold">删除《{{ targetSong?.title }}》？</h2>
         <p v-if="dialogError" class="text-sm text-error" role="alert">{{ dialogError }}</p>
         <div class="flex justify-end gap-2">
           <button class="btn" :disabled="pending" @click="dialog?.close()">取消</button>
@@ -123,5 +171,10 @@ defineExpose({ open });
       <button tabindex="-1" :disabled="pending || songEditor?.busy">关闭曲库弹窗</button>
     </form>
   </dialog>
-  <SongPlaylistPicker v-if="panel === 'details' && details" ref="playlistPicker" />
+  <SongPlaylistPicker
+    v-if="selectedSong"
+    ref="playlistPicker"
+    :initial-song="selectedSong"
+    @close="!panel && closePanel()"
+  />
 </template>

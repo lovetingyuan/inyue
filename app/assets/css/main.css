@@ -323,10 +323,14 @@ body {
 }
 
 @layer base {
-  html[data-native] {
+  html[data-native],
+  html[data-native] :where(dialog) {
     -webkit-user-select: none;
     user-select: none;
     -webkit-touch-callout: none;
+  }
+
+  html[data-native] {
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior: none;
   }
@@ -365,7 +369,7 @@ body {
     -webkit-touch-callout: default;
   }
 
-  html[data-native] .select-text {
+  html[data-native] :where(.select-text, .select-all) {
     -webkit-touch-callout: default;
   }
 }

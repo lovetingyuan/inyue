@@ -6,7 +6,12 @@ import { usePlaylistState, useSongDetailsState } from "~/composables/useLibraryQ
 import { useSongMembershipSave } from "~/composables/useLibraryMutations";
 import MusicArtwork from "~/components/MusicArtwork.vue";
 import { computed, nextTick, ref, useId, useTemplateRef, watch } from "vue";
-const { data: song } = useSongDetailsState();
+import type { SongDetails } from "~~/shared/types/library";
+
+const props = defineProps<{ initialSong?: SongDetails }>();
+const emit = defineEmits<{ close: [] }>();
+const { data: details } = useSongDetailsState();
+const song = computed(() => details.value ?? props.initialSong);
 const { playlists, covers } = usePlaylistState();
 const membership = useSongMembershipSave();
 const dialog = useTemplateRef("dialog");
@@ -88,6 +93,11 @@ watch(
   { immediate: true },
 );
 
+function handleClose() {
+  opened.value = false;
+  emit("close");
+}
+
 defineExpose({ open });
 </script>
 
@@ -97,7 +107,7 @@ defineExpose({ open });
     class="modal modal-bottom sm:modal-middle open:visible"
     :aria-labelledby="titleId"
     @cancel="saving && $event.preventDefault()"
-    @close="opened = false"
+    @close="handleClose"
   >
     <form
       class="modal-box flex max-h-[min(78dvh,36rem)] flex-col overflow-hidden p-0 sm:max-w-md"

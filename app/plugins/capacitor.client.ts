@@ -38,9 +38,21 @@ function isTextEditable(element: Element | null) {
   return element instanceof HTMLElement && element.isContentEditable;
 }
 
+function isTextSelectable(element: Element | null) {
+  if (!element) {
+    return false;
+  }
+  if (element.closest(".select-text, .select-all")) {
+    return true;
+  }
+  const style = window.getComputedStyle(element);
+  const userSelect = style.userSelect || style.getPropertyValue("-webkit-user-select");
+  return userSelect === "text" || userSelect === "all";
+}
+
 function allowNativeContextMenu(target: EventTarget | null) {
   const element = resolveTargetElement(target);
-  return isTextEditable(element) || Boolean(element?.closest(".select-text"));
+  return isTextEditable(element) || isTextSelectable(element);
 }
 
 export default defineNuxtPlugin((nuxtApp) => {

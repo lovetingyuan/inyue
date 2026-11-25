@@ -17,9 +17,11 @@ import LibraryPlayer from "~/components/LibraryPlayer.vue";
 import { computed, ref, useTemplateRef, watch } from "vue";
 import { useAsyncState, useTimeoutFn } from "@vueuse/core";
 import { useRouter } from "#app";
-import { Clock, Ellipsis, FileCheck, Music, Play, Search } from "@lucide/vue";
+import { Clock, FileCheck, Music, Play, Search } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { Song } from "~~/shared/types/library";
+import { useSongDownload } from "~/composables/useSongDownload";
+import SongActionMenu from "~/components/SongActionMenu.vue";
 import SongManagementDialog from "~/components/SongManagementDialog.vue";
 
 const library = useLibraryStore();
@@ -53,6 +55,7 @@ const error = computed(() => {
   return cause ? libraryError(cause) : "";
 });
 const songManagement = useTemplateRef("songManagement");
+const { download: downloadSong, isDownloading } = useSongDownload();
 const title = computed(() =>
   term.value
     ? "搜索结果"
@@ -320,13 +323,17 @@ async function playFirst() {
                   <span v-if="song.duration != null">{{ formatMusicTime(song.duration) }}</span>
                 </span>
               </button>
-              <button
-                class="btn btn-ghost btn-circle btn-sm mr-1"
-                :aria-label="`${song.title} 详情`"
-                @click="songManagement?.open(song)"
-              >
-                <Ellipsis class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
-              </button>
+              <SongActionMenu
+                :song="song"
+                :offline="app.offline"
+                :cached="Boolean(offlineAudio?.has(song.id))"
+                :downloading="isDownloading(song.id)"
+                @details="songManagement?.open($event)"
+                @edit="songManagement?.openEdit($event)"
+                @playlists="songManagement?.openPlaylists($event)"
+                @download="downloadSong($event)"
+                @delete="songManagement?.openDelete($event)"
+              />
             </li>
           </ul>
           <AsyncButton

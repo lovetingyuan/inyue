@@ -66,7 +66,7 @@ const playlistButton = useTemplateRef("playlistButton");
       </button>
       <div class="flex items-center gap-3.5 pr-10 sm:gap-4">
         <MusicArtwork :src="coverUrl" class="w-18 shadow-md sm:w-22" />
-        <div class="min-w-0">
+        <div class="min-w-0 select-text">
           <h2
             class="line-clamp-2 wrap-anywhere text-xl leading-tight font-bold tracking-tight sm:text-2xl"
             :title="song.title"
@@ -95,12 +95,12 @@ const playlistButton = useTemplateRef("playlistButton");
           class="flex min-w-0 items-baseline gap-2"
         >
           <dt class="shrink-0 text-base-content/65">{{ credit.label }}</dt>
-          <dd class="wrap-anywhere font-medium">{{ credit.value }}</dd>
+          <dd class="wrap-anywhere font-medium select-text">{{ credit.value }}</dd>
         </div>
       </dl>
       <section v-if="song.description">
         <h3 class="mb-1 text-xs font-semibold text-base-content/65">简介</h3>
-        <p class="text-sm/relaxed wrap-anywhere whitespace-pre-wrap text-base-content/85">
+        <p class="select-text text-sm/relaxed wrap-anywhere whitespace-pre-wrap text-base-content/85">
           <template v-for="(segment, index) in descriptionSegments" :key="index">
             <a
               v-if="segment.type === 'link'"

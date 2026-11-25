@@ -84,6 +84,28 @@ export async function clearNativeOfflineMedia(owner: string, legacyScope?: strin
   }
 }
 
+export async function exportNativeAudio(options: {
+  scope?: string;
+  id: string;
+  fileName: string;
+  url?: string;
+  origin?: string;
+}) {
+  const owner = options.scope ? await readOfflineOwner(options.scope) : undefined;
+  return nativeMedia.exportAudio({
+    owner,
+    legacyScope: options.scope,
+    id: options.id,
+    fileName: options.fileName,
+    url: options.url,
+    origin: options.origin,
+  });
+}
+
+export function openNativeDownloads() {
+  return nativeMedia.openDownloads();
+}
+
 async function deleteMedia(scope: string, directory: FileSystemDirectoryHandle, name: string) {
   try {
     await directory.removeEntry(name);
@@ -255,9 +277,8 @@ export async function readOfflineCovers(
       return {};
     }
     const now = Date.now();
-    const candidates = entries.filter(
-      (pair): pair is readonly [string, MediaEntry] =>
-        Boolean(pair[1] && now - pair[1].accessedAt < offlineMaxAge),
+    const candidates = entries.filter((pair): pair is readonly [string, MediaEntry] =>
+      Boolean(pair[1] && now - pair[1].accessedAt < offlineMaxAge),
     );
     if (!candidates.length) {
       return {};
