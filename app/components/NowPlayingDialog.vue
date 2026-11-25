@@ -7,6 +7,7 @@ import PlaybackProgress from "~/components/PlaybackProgress.vue";
 import MusicArtwork from "~/components/MusicArtwork.vue";
 import { computed, defineAsyncComponent, ref, useTemplateRef, watch } from "vue";
 import { ChevronDown, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from "@lucide/vue";
+import { useTimeoutFn } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import type { Component } from "vue";
 import { parseLrc } from "~~/shared/lrc";
@@ -30,17 +31,22 @@ const emit = defineEmits<{
 const player = usePlayerStore();
 const { current: track, position, volume, playing, loading, error } = storeToRefs(player);
 const dialog = useTemplateRef("dialog");
+const modalBox = useTemplateRef("modalBox");
 const progressBar = useTemplateRef("progressBar");
 const dialogOpen = ref(false);
+const contentMounted = ref(false);
 const hasLyrics = computed(() =>
   Boolean(track.value?.lyrics && parseLrc(track.value.lyrics).length),
 );
 const showLyrics = ref(false);
 const showCoverAura = computed(
-  () => dialogOpen.value && playing.value && !(hasLyrics.value && showLyrics.value),
+  () => contentMounted.value && playing.value && !(hasLyrics.value && showLyrics.value),
 );
 const lyricPosition = computed(() => progressBar.value?.displayedPosition ?? position.value);
 const scrubbing = computed(() => progressBar.value?.scrubbing ?? false);
+const { start: scheduleUnmount, stop: cancelUnmount } = useTimeoutFn(finishClose, 350, {
+  immediate: false,
+});
 
 watch(
   [() => track.value?.id, hasLyrics],
@@ -50,8 +56,29 @@ watch(
   { immediate: true },
 );
 
-function open() {
+function finishClose() {
+  cancelUnmount();
+  if (dialogOpen.value) {
+    return;
+  }
+  contentMounted.value = false;
   showLyrics.value = hasLyrics.value;
+}
+
+function handleBoxTransitionEnd(event: TransitionEvent) {
+  if (
+    event.target === event.currentTarget &&
+    event.propertyName === "translate" &&
+    !dialogOpen.value
+  ) {
+    finishClose();
+  }
+}
+
+function open() {
+  cancelUnmount();
+  showLyrics.value = hasLyrics.value;
+  contentMounted.value = true;
   dialogOpen.value = true;
   showMusicDialog(dialog.value);
 }
@@ -59,7 +86,14 @@ function open() {
 function handleClose() {
   progressBar.value?.resetPreview();
   dialogOpen.value = false;
-  showLyrics.value = hasLyrics.value;
+  const duration = modalBox.value
+    ? Number.parseFloat(getComputedStyle(modalBox.value).transitionDuration)
+    : 0;
+  if (!duration) {
+    finishClose();
+    return;
+  }
+  scheduleUnmount();
 }
 
 defineExpose({
@@ -71,13 +105,15 @@ defineExpose({
 <template>
   <dialog
     ref="dialog"
-    class="modal"
+    class="modal modal-bottom sm:place-items-center"
     aria-labelledby="now-playing-title"
     data-playback-shortcuts
     @close="handleClose"
   >
     <div
+      ref="modalBox"
       class="modal-box safe-panel flex h-dvh max-h-dvh w-screen max-w-none flex-col rounded-none bg-base-100 bg-linear-to-b from-primary/10 to-transparent to-70% p-0 sm:h-auto sm:max-h-[90dvh] sm:w-md sm:rounded-box"
+      @transitionend="handleBoxTransitionEnd"
     >
       <header
         class="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-5 pt-[calc(0.5rem+var(--safe-area-inset-top,env(safe-area-inset-top,0px)))] pb-1 sm:pt-3"
@@ -97,7 +133,7 @@ defineExpose({
         </h2>
       </header>
       <div
-        v-if="dialogOpen && track"
+        v-if="contentMounted && track"
         class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-5 pb-2.5 sm:px-8"
       >
         <div class="m-auto grid w-full max-w-sm shrink-0 gap-[clamp(0.875rem,2.2dvh,1.375rem)]">
@@ -126,7 +162,7 @@ defineExpose({
               >
                 <span class="inline-grid w-full align-top [@media(hover:hover)]:hover-3d">
                   <MusicArtwork
-                    :src="dialogOpen ? track.coverUrl : undefined"
+                    :src="track.coverUrl"
                     class="w-full rounded-[1.5rem]! shadow-xl shadow-base-content/15 ring-1 ring-base-content/8"
                   />
                   <span v-for="zone in 8" :key="zone" aria-hidden="true" />
@@ -134,7 +170,7 @@ defineExpose({
               </span>
             </component>
             <MusicLyrics
-              v-if="dialogOpen && hasLyrics && showLyrics"
+              v-if="hasLyrics && showLyrics"
               :lyrics="track.lyrics"
               :position="lyricPosition"
               :scrubbing="scrubbing"
