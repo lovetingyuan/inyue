@@ -3,7 +3,7 @@ import { showMusicDialog } from "~/utils/music-dialog";
 import { computed, ref, useTemplateRef, watch } from "vue";
 import { X } from "@lucide/vue";
 import { Capacitor } from "@capacitor/core";
-const props = defineProps<{ src?: string | null; zoomable?: boolean }>();
+const props = defineProps<{ src?: string | null; zoomable?: boolean; eager?: boolean }>();
 const artwork = computed(() =>
   props.src &&
   (props.src.startsWith("file://") || props.src.startsWith("content://")) &&
@@ -29,8 +29,8 @@ watch(
       v-if="src && !broken"
       :src="artwork"
       alt=""
-      loading="lazy"
-      decoding="async"
+      :loading="eager ? 'eager' : 'lazy'"
+      :decoding="eager ? 'sync' : 'async'"
       class="absolute inset-0 size-full object-cover"
       @error="broken = true"
     />

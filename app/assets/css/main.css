@@ -398,6 +398,107 @@ body {
   }
 }
 
+.modal[data-vt-active],
+.modal[data-vt-active] > .modal-box {
+  transition: none !important;
+}
+
+@keyframes now-playing-panel-in {
+  from {
+    translate: 0 100%;
+    opacity: var(--vt-panel-edge-opacity, 1);
+  }
+}
+
+@keyframes now-playing-panel-out {
+  to {
+    translate: 0 100%;
+    opacity: var(--vt-panel-edge-opacity, 1);
+  }
+}
+
+html[data-vt-now-playing] {
+  --vt-now-playing-duration: 380ms;
+  --vt-now-playing-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --vt-panel-edge-opacity: 1;
+}
+
+@media (width >= 40rem) {
+  html[data-vt-now-playing] {
+    --vt-panel-edge-opacity: 0;
+  }
+}
+
+@media (pointer: coarse) {
+  html[data-vt-now-playing] {
+    --vt-now-playing-duration: 340ms;
+  }
+}
+
+html[data-vt-now-playing]::view-transition-old(root),
+html[data-vt-now-playing]::view-transition-new(root) {
+  animation-duration: var(--vt-now-playing-duration);
+  animation-timing-function: ease-out;
+}
+
+html[data-vt-now-playing]::view-transition-group(now-playing-panel) {
+  z-index: 1;
+  animation-duration: var(--vt-now-playing-duration);
+  animation-timing-function: var(--vt-now-playing-ease);
+}
+
+html[data-vt-now-playing]::view-transition-new(now-playing-panel):only-child {
+  animation: now-playing-panel-in var(--vt-now-playing-duration) var(--vt-now-playing-ease) both;
+}
+
+html[data-vt-now-playing]::view-transition-old(now-playing-panel):only-child {
+  animation: now-playing-panel-out var(--vt-now-playing-duration) var(--vt-now-playing-ease) both;
+}
+
+html[data-vt-now-playing]::view-transition-group(now-playing-cover),
+html[data-vt-now-playing]::view-transition-group(now-playing-title),
+html[data-vt-now-playing]::view-transition-group(now-playing-progress),
+html[data-vt-now-playing]::view-transition-group(now-playing-elapsed),
+html[data-vt-now-playing]::view-transition-group(now-playing-duration),
+html[data-vt-now-playing]::view-transition-group(now-playing-prev),
+html[data-vt-now-playing]::view-transition-group(now-playing-play),
+html[data-vt-now-playing]::view-transition-group(now-playing-next) {
+  z-index: 2;
+  animation-duration: var(--vt-now-playing-duration);
+  animation-timing-function: var(--vt-now-playing-ease);
+}
+
+html[data-vt-now-playing]::view-transition-old(now-playing-cover),
+html[data-vt-now-playing]::view-transition-new(now-playing-cover),
+html[data-vt-now-playing]::view-transition-old(now-playing-title),
+html[data-vt-now-playing]::view-transition-new(now-playing-title),
+html[data-vt-now-playing]::view-transition-old(now-playing-progress),
+html[data-vt-now-playing]::view-transition-new(now-playing-progress),
+html[data-vt-now-playing]::view-transition-old(now-playing-elapsed),
+html[data-vt-now-playing]::view-transition-new(now-playing-elapsed),
+html[data-vt-now-playing]::view-transition-old(now-playing-duration),
+html[data-vt-now-playing]::view-transition-new(now-playing-duration),
+html[data-vt-now-playing]::view-transition-old(now-playing-prev),
+html[data-vt-now-playing]::view-transition-new(now-playing-prev),
+html[data-vt-now-playing]::view-transition-old(now-playing-play),
+html[data-vt-now-playing]::view-transition-new(now-playing-play),
+html[data-vt-now-playing]::view-transition-old(now-playing-next),
+html[data-vt-now-playing]::view-transition-new(now-playing-next) {
+  animation-duration: var(--vt-now-playing-duration);
+  animation-timing-function: var(--vt-now-playing-ease);
+}
+
+html[data-vt-now-playing]::view-transition-group(now-playing-title) {
+  overflow: clip;
+}
+
+html[data-vt-now-playing]::view-transition-old(now-playing-title),
+html[data-vt-now-playing]::view-transition-new(now-playing-title) {
+  block-size: 100%;
+  inline-size: auto;
+  inset-inline-start: 0;
+}
+
 @layer utilities {
   html[data-native] .tooltip:not(.tooltip-open)::before,
   html[data-native] .tooltip:not(.tooltip-open)::after,

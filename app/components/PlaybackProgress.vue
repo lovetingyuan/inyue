@@ -1,13 +1,29 @@
 <script setup lang="ts">
 import { formatMusicTime } from "~/utils/format-music-time";
+import { getNowPlayingTransitionStyle } from "~/utils/now-playing-transition";
 import { usePlayerStore } from "~/stores/player";
 import PlaybackSlider from "~/components/PlaybackSlider.vue";
 import { computed, ref, watch } from "vue";
 import { useDocumentVisibility } from "@vueuse/core";
 import { storeToRefs } from "pinia";
+import type {
+  NowPlayingTransitionState,
+  NowPlayingTransitionTarget,
+} from "~/types/now-playing-transition";
 
 defineOptions({ name: "PlaybackProgress" });
-defineProps<{ layout: "inline" | "stacked" }>();
+const props = defineProps<{
+  layout: "inline" | "stacked";
+  transitionState?: NowPlayingTransitionState;
+  transitionOwner?: Exclude<NowPlayingTransitionTarget, "none">;
+}>();
+
+function transitionStyle(slot: "progress" | "elapsed" | "duration") {
+  if (!props.transitionState || !props.transitionOwner) {
+    return undefined;
+  }
+  return getNowPlayingTransitionStyle(props.transitionState, props.transitionOwner, slot);
+}
 
 const player = usePlayerStore();
 const { current: track, position } = storeToRefs(player);
@@ -52,7 +68,10 @@ defineExpose({ resetPreview, displayedPosition, scrubbing });
         : 'grid-cols-2 text-xs text-base-content/70'
     "
   >
-    <span :class="{ 'row-start-2': layout === 'stacked' }">{{
+    <span
+      :class="{ 'row-start-2 justify-self-start': layout === 'stacked' }"
+      :style="transitionStyle('elapsed')"
+    >{{
       formatMusicTime(displayedPosition)
     }}</span>
     <PlaybackSlider
@@ -61,6 +80,7 @@ defineExpose({ resetPreview, displayedPosition, scrubbing });
       aria-label="播放进度"
       class="w-full min-w-0"
       :class="layout === 'inline' ? 'text-neutral-content' : 'range-primary col-span-2 row-start-1'"
+      :style="transitionStyle('progress')"
       :fill="fill"
       :max="duration"
       step="0.1"
@@ -71,6 +91,8 @@ defineExpose({ resetPreview, displayedPosition, scrubbing });
       @pointercancel="resetPreview"
       @blur="resetPreview"
     />
-    <span class="justify-self-end">{{ formatMusicTime(duration) }}</span>
+    <span class="justify-self-end" :style="transitionStyle('duration')">{{
+      formatMusicTime(duration)
+    }}</span>
   </div>
 </template>

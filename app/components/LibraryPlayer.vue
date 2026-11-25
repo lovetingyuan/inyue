@@ -24,6 +24,8 @@ import {
 import { useAsyncState, useEventListener, useTimeoutFn } from "@vueuse/core";
 import { useRouter } from "#app";
 import { storeToRefs } from "pinia";
+import { getNowPlayingTransitionStyle } from "~/utils/now-playing-transition";
+import type { NowPlayingTransitionState } from "~/types/now-playing-transition";
 import type { PlaybackMode } from "~~/shared/types/library";
 
 defineOptions({ name: "LibraryPlayer" });
@@ -40,6 +42,10 @@ const { isLoading: refreshingQueue, executeImmediate: refreshQueue } = useAsyncS
 );
 const nowPlaying = useTemplateRef("nowPlaying");
 const queueDialog = useTemplateRef("queueDialog");
+const nowPlayingTransition = ref<NowPlayingTransitionState>({
+  target: "none",
+  includeCover: false,
+});
 const playbackModes = {
   sequential: { label: "顺序播放", icon: ListOrdered },
   loop: { label: "列表循环", icon: Repeat },
@@ -207,9 +213,18 @@ async function cycleMode() {
           aria-label="打开正在播放"
           @click="nowPlaying?.open()"
         >
-          <MusicArtwork :src="track.coverUrl" class="w-11" />
+          <MusicArtwork
+            :src="track.coverUrl"
+            class="w-11"
+            :style="getNowPlayingTransitionStyle(nowPlayingTransition, 'player', 'cover')"
+          />
           <span class="min-w-0 flex-1">
-            <span class="block truncate text-sm font-semibold">{{ track.title }}</span>
+            <span
+              class="block w-fit max-w-full truncate text-sm font-semibold"
+              :style="getNowPlayingTransitionStyle(nowPlayingTransition, 'player', 'title')"
+            >
+              {{ track.title }}
+            </span>
             <span class="block truncate text-xs text-neutral-content/75">{{ track.artist }}</span>
           </span>
         </button>
@@ -224,6 +239,7 @@ async function cycleMode() {
               aria-label="上一首"
               :aria-keyshortcuts="shortcutsEnabled ? 'Shift+ArrowLeft' : undefined"
               :title="shortcutsEnabled ? '上一首（Shift + ←）' : undefined"
+              :style="getNowPlayingTransitionStyle(nowPlayingTransition, 'player', 'prev')"
               :action="() => player.step(-1)"
             >
               <template #icon>
@@ -241,6 +257,7 @@ async function cycleMode() {
               :loading="loading"
               :aria-keyshortcuts="shortcutsEnabled ? 'Space' : undefined"
               :title="shortcutsEnabled ? `${playing ? '暂停' : '播放'}（空格）` : undefined"
+              :style="getNowPlayingTransitionStyle(nowPlayingTransition, 'player', 'play')"
               :action="player.toggle"
             >
               <template #icon>
@@ -258,6 +275,7 @@ async function cycleMode() {
               aria-label="下一首"
               :aria-keyshortcuts="shortcutsEnabled ? 'Shift+ArrowRight' : undefined"
               :title="shortcutsEnabled ? '下一首（Shift + →）' : undefined"
+              :style="getNowPlayingTransitionStyle(nowPlayingTransition, 'player', 'next')"
               :action="() => player.step(1)"
             >
               <template #icon>
@@ -303,6 +321,8 @@ async function cycleMode() {
           </div>
           <PlaybackProgress
             layout="inline"
+            :transition-state="nowPlayingTransition"
+            transition-owner="player"
             class="@max-[48rem]/player:col-span-2 @min-[48rem]/player:-mb-1.5"
           />
         </div>
@@ -349,6 +369,7 @@ async function cycleMode() {
 
   <NowPlayingDialog
     ref="nowPlaying"
+    v-model:transition-state="nowPlayingTransition"
     :shortcuts-enabled="shortcutsEnabled"
     :refreshing-queue="refreshingQueue"
     :playback-mode="playbackMode"

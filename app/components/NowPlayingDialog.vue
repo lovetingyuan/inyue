@@ -5,10 +5,24 @@ import { usePlayerStore } from "~/stores/player";
 import PlaybackSlider from "~/components/PlaybackSlider.vue";
 import PlaybackProgress from "~/components/PlaybackProgress.vue";
 import MusicArtwork from "~/components/MusicArtwork.vue";
-import { computed, defineAsyncComponent, ref, useTemplateRef, watch } from "vue";
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onBeforeUnmount,
+  ref,
+  useTemplateRef,
+  watch,
+} from "vue";
 import { ChevronDown, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from "@lucide/vue";
 import { useTimeoutFn } from "@vueuse/core";
 import { storeToRefs } from "pinia";
+import {
+  canStartNowPlayingTransition,
+  getNowPlayingTransitionStyle,
+  waitForArtworkDecode,
+} from "~/utils/now-playing-transition";
+import type { NowPlayingTransitionState } from "~/types/now-playing-transition";
 import type { Component } from "vue";
 import { parseLrc } from "~~/shared/lrc";
 
@@ -28,6 +42,9 @@ const emit = defineEmits<{
   refreshQueue: [];
 }>();
 
+const transitionState = defineModel<NowPlayingTransitionState>("transitionState", {
+  required: true,
+});
 const player = usePlayerStore();
 const { current: track, position, volume, playing, loading, error } = storeToRefs(player);
 const dialog = useTemplateRef("dialog");
@@ -35,12 +52,17 @@ const modalBox = useTemplateRef("modalBox");
 const progressBar = useTemplateRef("progressBar");
 const dialogOpen = ref(false);
 const contentMounted = ref(false);
+const vtActive = ref(false);
 const hasLyrics = computed(() =>
   Boolean(track.value?.lyrics && parseLrc(track.value.lyrics).length),
 );
 const showLyrics = ref(false);
 const showCoverAura = computed(
-  () => contentMounted.value && playing.value && !(hasLyrics.value && showLyrics.value),
+  () =>
+    contentMounted.value &&
+    !vtActive.value &&
+    playing.value &&
+    !(hasLyrics.value && showLyrics.value),
 );
 const lyricPosition = computed(() => progressBar.value?.displayedPosition ?? position.value);
 const scrubbing = computed(() => progressBar.value?.scrubbing ?? false);
@@ -56,6 +78,12 @@ watch(
   { immediate: true },
 );
 
+function resetTransition() {
+  vtActive.value = false;
+  transitionState.value = { target: "none", includeCover: false };
+  delete document.documentElement.dataset.vtNowPlaying;
+}
+
 function finishClose() {
   cancelUnmount();
   if (dialogOpen.value) {
@@ -69,23 +97,122 @@ function handleBoxTransitionEnd(event: TransitionEvent) {
   if (
     event.target === event.currentTarget &&
     event.propertyName === "translate" &&
-    !dialogOpen.value
+    !dialogOpen.value &&
+    !vtActive.value
   ) {
     finishClose();
   }
 }
 
-function open() {
+async function open() {
+  if (dialog.value?.open || vtActive.value) {
+    return;
+  }
   cancelUnmount();
-  showLyrics.value = hasLyrics.value;
-  contentMounted.value = true;
-  dialogOpen.value = true;
-  showMusicDialog(dialog.value);
+  if (!track.value || !canStartNowPlayingTransition()) {
+    showLyrics.value = hasLyrics.value;
+    contentMounted.value = true;
+    dialogOpen.value = true;
+    showMusicDialog(dialog.value);
+    return;
+  }
+
+  const includeCover = !hasLyrics.value;
+  vtActive.value = true;
+  document.documentElement.dataset.vtNowPlaying = "";
+  transitionState.value = { target: "player", includeCover };
+  await nextTick();
+
+  if (!track.value || dialog.value?.open) {
+    resetTransition();
+    return;
+  }
+
+  try {
+    const transition = document.startViewTransition(async () => {
+      transitionState.value = { target: "dialog", includeCover };
+      showLyrics.value = hasLyrics.value;
+      contentMounted.value = true;
+      dialogOpen.value = true;
+      showMusicDialog(dialog.value);
+      await nextTick();
+      if (includeCover) {
+        await waitForArtworkDecode(modalBox.value);
+      }
+    });
+    await transition.finished;
+  } catch {
+    showLyrics.value = hasLyrics.value;
+    contentMounted.value = true;
+    dialogOpen.value = true;
+    showMusicDialog(dialog.value);
+  } finally {
+    resetTransition();
+  }
+}
+
+async function requestClose() {
+  if (!dialog.value?.open || vtActive.value) {
+    return;
+  }
+  if (!track.value || !canStartNowPlayingTransition()) {
+    dialog.value.close();
+    return;
+  }
+
+  const includeCover = !(hasLyrics.value && showLyrics.value);
+  progressBar.value?.resetPreview();
+  cancelUnmount();
+  vtActive.value = true;
+  document.documentElement.dataset.vtNowPlaying = "";
+  transitionState.value = { target: "dialog", includeCover };
+  await nextTick();
+
+  if (!dialog.value?.open) {
+    resetTransition();
+    return;
+  }
+
+  try {
+    const transition = document.startViewTransition(async () => {
+      transitionState.value = { target: "player", includeCover };
+      dialogOpen.value = false;
+      contentMounted.value = false;
+      showLyrics.value = hasLyrics.value;
+      dialog.value?.close();
+      await nextTick();
+    });
+    await transition.finished;
+  } catch {
+    if (dialog.value?.open) {
+      dialog.value.close();
+    }
+    dialogOpen.value = false;
+    contentMounted.value = false;
+    showLyrics.value = hasLyrics.value;
+  } finally {
+    resetTransition();
+  }
+}
+
+function handleCancel(event: Event) {
+  if (vtActive.value) {
+    event.preventDefault();
+    return;
+  }
+  if (!track.value || !canStartNowPlayingTransition()) {
+    return;
+  }
+  event.preventDefault();
+  void requestClose();
 }
 
 function handleClose() {
   progressBar.value?.resetPreview();
   dialogOpen.value = false;
+  if (vtActive.value) {
+    return;
+  }
   const duration = modalBox.value
     ? Number.parseFloat(getComputedStyle(modalBox.value).transitionDuration)
     : 0;
@@ -95,6 +222,12 @@ function handleClose() {
   }
   scheduleUnmount();
 }
+
+onBeforeUnmount(() => {
+  if (vtActive.value) {
+    resetTransition();
+  }
+});
 
 defineExpose({
   open,
@@ -108,21 +241,27 @@ defineExpose({
     class="modal modal-bottom sm:place-items-center"
     aria-labelledby="now-playing-title"
     data-playback-shortcuts
+    :data-vt-active="vtActive ? '' : undefined"
+    @cancel="handleCancel"
     @close="handleClose"
   >
     <div
       ref="modalBox"
       class="modal-box safe-panel flex h-dvh max-h-dvh w-screen max-w-none flex-col rounded-none bg-base-100 bg-linear-to-b from-primary/10 to-transparent to-70% p-0 sm:h-auto sm:max-h-[90dvh] sm:w-md sm:rounded-box"
+      :style="getNowPlayingTransitionStyle(transitionState, 'dialog', 'panel')"
       @transitionend="handleBoxTransitionEnd"
     >
       <header
         class="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-5 pt-[calc(0.5rem+var(--safe-area-inset-top,env(safe-area-inset-top,0px)))] pb-1 sm:pt-3"
       >
-        <form method="dialog" class="justify-self-start">
-          <button class="btn btn-ghost btn-circle min-h-11 min-w-11" aria-label="收起正在播放">
-            <ChevronDown class="size-6 shrink-0" :stroke-width="1.8" aria-hidden="true" />
-          </button>
-        </form>
+        <button
+          type="button"
+          class="btn btn-ghost btn-circle min-h-11 min-w-11 justify-self-start"
+          aria-label="收起正在播放"
+          @click="requestClose"
+        >
+          <ChevronDown class="size-6 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+        </button>
         <h2
           id="now-playing-title"
           class="text-sm font-semibold text-base-content/70"
@@ -162,7 +301,10 @@ defineExpose({
               >
                 <span class="inline-grid w-full align-top [@media(hover:hover)]:hover-3d">
                   <MusicArtwork
+                    data-now-playing-cover
+                    eager
                     :src="track.coverUrl"
+                    :style="getNowPlayingTransitionStyle(transitionState, 'dialog', 'cover')"
                     class="w-full rounded-[1.5rem]! shadow-xl shadow-base-content/15 ring-1 ring-base-content/8"
                   />
                   <span v-for="zone in 8" :key="zone" aria-hidden="true" />
@@ -179,8 +321,9 @@ defineExpose({
           </div>
           <div class="min-w-0 mt-4">
             <p
-              class="truncate text-[clamp(1.125rem,4vw,1.375rem)] leading-tight font-bold tracking-tight"
+              class="w-fit max-w-full truncate text-[clamp(1.125rem,4vw,1.375rem)] leading-tight font-bold tracking-tight"
               :title="track.title"
+              :style="getNowPlayingTransitionStyle(transitionState, 'dialog', 'title')"
             >
               {{ track.title }}
             </p>
@@ -194,13 +337,19 @@ defineExpose({
               </span>
             </p>
           </div>
-          <PlaybackProgress ref="progressBar" layout="stacked" />
+          <PlaybackProgress
+            ref="progressBar"
+            layout="stacked"
+            :transition-state="transitionState"
+            transition-owner="dialog"
+          />
           <div class="flex items-center justify-center gap-6 sm:gap-8">
             <AsyncButton
               class="btn btn-ghost btn-circle btn-lg"
               aria-label="上一首"
               :aria-keyshortcuts="shortcutsEnabled ? 'Shift+ArrowLeft' : undefined"
               :title="shortcutsEnabled ? '上一首（Shift + ←）' : undefined"
+              :style="getNowPlayingTransitionStyle(transitionState, 'dialog', 'prev')"
               :action="() => player.step(-1)"
             >
               <template #icon>
@@ -218,6 +367,7 @@ defineExpose({
               :loading="loading"
               :aria-keyshortcuts="shortcutsEnabled ? 'Space' : undefined"
               :title="shortcutsEnabled ? `${playing ? '暂停' : '播放'}（空格）` : undefined"
+              :style="getNowPlayingTransitionStyle(transitionState, 'dialog', 'play')"
               :action="player.toggle"
             >
               <template #icon>
@@ -235,6 +385,7 @@ defineExpose({
               aria-label="下一首"
               :aria-keyshortcuts="shortcutsEnabled ? 'Shift+ArrowRight' : undefined"
               :title="shortcutsEnabled ? '下一首（Shift + →）' : undefined"
+              :style="getNowPlayingTransitionStyle(transitionState, 'dialog', 'next')"
               :action="() => player.step(1)"
             >
               <template #icon>
@@ -320,8 +471,10 @@ defineExpose({
         </div>
       </div>
     </div>
-    <form method="dialog" class="modal-backdrop">
-      <button tabindex="-1" aria-label="收起正在播放">关闭</button>
-    </form>
+    <div class="modal-backdrop">
+      <button type="button" tabindex="-1" aria-label="收起正在播放" @click="requestClose">
+        关闭
+      </button>
+    </div>
   </dialog>
 </template>
