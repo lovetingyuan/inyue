@@ -33,7 +33,9 @@ export default defineEventHandler(async (event) => {
     .from(session)
     .innerJoin(user, eq(user.id, session.userId))
     .leftJoin(files, and(eq(files.id, id), eq(files.ownerId, user.id), eq(files.state, "ready")))
-    .where(and(eq(session.id, sid), gt(session.expiresAt, new Date()), eq(user.emailVerified, true)))
+    .where(
+      and(eq(session.id, sid), gt(session.expiresAt, new Date()), eq(user.emailVerified, true)),
+    )
     .get();
   if (!row) {
     return sendNoContent(event, 403);

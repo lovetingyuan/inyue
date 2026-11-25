@@ -64,11 +64,7 @@ function shouldIgnoreTarget(target: Element | null) {
   return Boolean(target.closest(IGNORED_SELECTOR));
 }
 
-function hasHorizontalScrollableAncestor(
-  start: Element | null,
-  boundary: HTMLElement,
-  dx: number,
-) {
+function hasHorizontalScrollableAncestor(start: Element | null, boundary: HTMLElement, dx: number) {
   let node = start;
   while (node && node !== boundary) {
     if (node instanceof HTMLElement && node.scrollWidth > node.clientWidth + 1) {
@@ -241,9 +237,7 @@ export function attachDrawerGesture(options: DrawerGestureOptions) {
 
     const width = drawerWidth || aside.offsetWidth || 288;
     const speed = Math.max(Math.abs(velocity), MIN_SETTLE_SPEED);
-    const duration = Math.round(
-      clamp((remaining * width) / speed, MIN_SETTLE_MS, MAX_SETTLE_MS),
-    );
+    const duration = Math.round(clamp((remaining * width) / speed, MIN_SETTLE_MS, MAX_SETTLE_MS));
 
     void aside.offsetWidth;
     overlay.style.transition = `opacity ${duration}ms ${SETTLE_EASING}`;

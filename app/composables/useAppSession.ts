@@ -206,14 +206,13 @@ export function useAppSession() {
         if (disposed || scope !== session.offlineScope) {
           return;
         }
-        void Promise.all([
-          import("~/utils/offline-library"),
-          import("~/utils/offline-media"),
-        ]).then(([{ pruneOfflineMetadata }, { pruneOfflineMedia }]) => {
-          if (!disposed && scope === session.offlineScope) {
-            void Promise.allSettled([pruneOfflineMetadata(scope), pruneOfflineMedia(scope)]);
-          }
-        });
+        void Promise.all([import("~/utils/offline-library"), import("~/utils/offline-media")]).then(
+          ([{ pruneOfflineMetadata }, { pruneOfflineMedia }]) => {
+            if (!disposed && scope === session.offlineScope) {
+              void Promise.allSettled([pruneOfflineMetadata(scope), pruneOfflineMedia(scope)]);
+            }
+          },
+        );
       }, 3000);
       onCleanup(() => clearTimeout(timer));
     },

@@ -109,10 +109,9 @@ defineExpose({
               :type="hasLyrics ? 'button' : undefined"
               class="grid w-full place-items-center"
               :class="[
-                hasLyrics && 'z-10 cursor-pointer select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary',
-                hasLyrics && showLyrics
-                  ? 'rounded-xl'
-                  : 'max-w-(--cover-width) rounded-[1.5rem]',
+                hasLyrics &&
+                  'z-10 cursor-pointer select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary',
+                hasLyrics && showLyrics ? 'rounded-xl' : 'max-w-(--cover-width) rounded-[1.5rem]',
               ]"
               :aria-pressed="hasLyrics ? showLyrics : undefined"
               :aria-label="hasLyrics ? (showLyrics ? '显示封面' : '显示歌词') : undefined"

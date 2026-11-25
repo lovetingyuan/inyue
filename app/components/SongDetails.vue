@@ -100,7 +100,9 @@ const playlistButton = useTemplateRef("playlistButton");
       </dl>
       <section v-if="song.description">
         <h3 class="mb-1 text-xs font-semibold text-base-content/65">简介</h3>
-        <p class="select-text text-sm/relaxed wrap-anywhere whitespace-pre-wrap text-base-content/85">
+        <p
+          class="select-text text-sm/relaxed wrap-anywhere whitespace-pre-wrap text-base-content/85"
+        >
           <template v-for="(segment, index) in descriptionSegments" :key="index">
             <a
               v-if="segment.type === 'link'"

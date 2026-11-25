@@ -90,11 +90,16 @@ export default defineEventHandler(async (event) => {
   let total = term && offset === 0 && nextOffset === null ? page.length : undefined;
   if (items.length && needsCount) {
     const [countRows, rows] = await db.batch([
-      db.select({ count: sql<number>`count(*)` }).from(songs).where(where),
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(songs)
+        .where(where),
       db
         .select({ songId: memberships.songId, playlistId: memberships.playlistId })
         .from(memberships)
-        .where(and(eq(memberships.ownerId, user.id), inArray(memberships.songId, [...bySong.keys()]))),
+        .where(
+          and(eq(memberships.ownerId, user.id), inArray(memberships.songId, [...bySong.keys()])),
+        ),
     ]);
     total = Number(countRows[0]?.count ?? 0);
     for (const row of rows) {

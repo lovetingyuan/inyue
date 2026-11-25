@@ -5,7 +5,12 @@ import { releaseCoverObjectUrl, retainCoverObjectUrl } from "~/utils/cover-objec
 import { computed, ref, shallowRef, watch } from "vue";
 import type { PluginListenerHandle } from "@capacitor/core";
 import type { PlaylistPlugin, RepeatMode } from "@dwbn/capacitor-plugin-playlist";
-import { useDocumentVisibility, useEventListener, useIntervalFn, useThrottleFn } from "@vueuse/core";
+import {
+  useDocumentVisibility,
+  useEventListener,
+  useIntervalFn,
+  useThrottleFn,
+} from "@vueuse/core";
 import { defineStore } from "pinia";
 import type {
   MediaAuthorization,
@@ -202,12 +207,7 @@ export const usePlayerStore = defineStore("player", () => {
       : "无法播放，请检查网络或登录状态，再刷新队列。";
   }
 
-  function replaceArtwork(next?: {
-    trackId: string;
-    scope: string;
-    coverId: string;
-    url: string;
-  }) {
+  function replaceArtwork(next?: { trackId: string; scope: string; coverId: string; url: string }) {
     const previous = currentArtwork.value;
     currentArtwork.value = next;
     if (previous) {
@@ -244,14 +244,7 @@ export const usePlayerStore = defineStore("player", () => {
   async function cachePlayingTrack(track: Track) {
     const scope = useSessionStore().offlineScope;
     const signal = mediaWrites?.signal;
-    if (
-      !scope ||
-      !signal ||
-      app.offline ||
-      audioUrl ||
-      !track.url ||
-      isNativeLocalUri(track.url)
-    ) {
+    if (!scope || !signal || app.offline || audioUrl || !track.url || isNativeLocalUri(track.url)) {
       return;
     }
     const key = `${scope}/${track.id}`;

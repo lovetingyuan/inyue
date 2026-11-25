@@ -17,7 +17,7 @@ import LibraryPlayer from "~/components/LibraryPlayer.vue";
 import { computed, ref, useTemplateRef, watch } from "vue";
 import { useAsyncState, useTimeoutFn } from "@vueuse/core";
 import { useRouter } from "#app";
-import { Clock, FileCheck, Music, Play, Search } from "@lucide/vue";
+import { CircleAlert, Clock, FileCheck, Music, Play, Search } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { Song } from "~~/shared/types/library";
 import { useSongDownload } from "~/composables/useSongDownload";
@@ -198,10 +198,16 @@ async function playFirst() {
             </div>
           </div>
         </div>
-        <div v-else-if="error || retrying" class="alert alert-error alert-soft mt-4" role="alert">
-          {{ error }}
+        <div
+          v-else-if="error || retrying"
+          class="alert alert-error alert-soft mt-4 gap-2.5 border-error/25 bg-error/15"
+          role="alert"
+        >
+          <CircleAlert class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+          <span class="min-w-0">{{ error }}</span>
           <button
-            class="btn btn-sm"
+            type="button"
+            class="btn btn-sm shrink-0"
             :disabled="retrying"
             :aria-busy="retrying"
             @click="retryLibrary()"

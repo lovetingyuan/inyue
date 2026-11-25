@@ -277,10 +277,7 @@ function useCoverUrls(
   let retained: { scope: string; id: string }[] = [];
   let unshared: string[] = [];
 
-  function release(
-    previousRetained: { scope: string; id: string }[],
-    previousUnshared: string[],
-  ) {
+  function release(previousRetained: { scope: string; id: string }[], previousUnshared: string[]) {
     for (const { scope, id } of previousRetained) {
       releaseCoverObjectUrl(scope, id);
     }
