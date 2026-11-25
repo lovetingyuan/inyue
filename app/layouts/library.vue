@@ -122,7 +122,11 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
         <span class="text-xl font-bold tracking-tight">
           inYue <small v-if="isDev" class="text-xs font-medium text-base-content/65">dev</small>
         </span>
-        <span class="text-xs text-base-content/65" role="status">{{ offline ? "离线" : "" }}</span>
+        <span
+          role="status"
+          :class="offline ? 'badge badge-warning badge-sm shrink-0 font-semibold' : 'sr-only'"
+          >{{ offline ? "离线" : "" }}</span
+        >
       </header>
       <main class="flex min-h-0 flex-1 flex-col">
         <slot />
@@ -160,9 +164,11 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
               inYue <small v-if="isDev" class="text-xs font-medium text-base-content/65">dev</small>
             </span>
           </NuxtLink>
-          <span class="text-xs text-base-content/65" role="status">{{
-            offline ? "离线" : ""
-          }}</span>
+          <span
+            role="status"
+            :class="offline ? 'badge badge-warning badge-sm shrink-0 font-semibold' : 'sr-only'"
+            >{{ offline ? "离线" : "" }}</span
+          >
           <button
             ref="drawerClose"
             type="button"
