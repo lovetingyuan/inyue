@@ -7,10 +7,23 @@ import { nextTick, onBeforeUnmount, onMounted, watch } from "vue";
 import { useNuxtApp, useRuntimeConfig } from "#app";
 import { useMutationCache, useQueryCache } from "@pinia/colada";
 import type { PluginListenerHandle } from "@capacitor/core";
-import { useDocumentVisibility, useEventListener, useIntervalFn, useOnline } from "@vueuse/core";
+import {
+  useDocumentVisibility,
+  useEventBus,
+  useEventListener,
+  useIntervalFn,
+  useOnline,
+} from "@vueuse/core";
 import { offlineSessionKey } from "~~/shared/offline-library";
 import { responseStatus } from "~/utils/library-error";
-import { libraryKeys } from "~/utils/music-query-keys";
+import { libraryKeys, networkActivityEvent } from "~/utils/music-query-keys";
+
+const probeTimeoutMs = 4_000;
+const osOfflineGraceMs = 800;
+const offlineConfirmDelayMs = 800;
+const onlineHeartbeatIntervalMs = 20_000;
+const recentReachableWindowMs = 15_000;
+const recoveryBackoffMs = [1_500, 2_500, 4_000, 6_000, 10_000] as const;
 
 export function useAppSession() {
   const session = useSessionStore();
@@ -24,73 +37,367 @@ export function useAppSession() {
   const visible = useDocumentVisibility();
   const serverRendered = useNuxtApp().payload.serverRendered;
   const integrationPlayback = useRuntimeConfig().public.integrationPlayback;
+  const networkActivity = import.meta.client
+    ? useEventBus<"reachable" | "unreachable">(networkActivityEvent)
+    : undefined;
+
   let nativeOnline: boolean | undefined;
   let networkRevision = 0;
-  let probing = false;
+  let lastReachableAt = 0;
+  let lastNativeResumeAt = 0;
+  let recoveryAttempt = 0;
+  let probeController: AbortController | undefined;
+  let activeProbeMode: "verify-offline" | "recover" | undefined;
+  let activeProbeRevision = -1;
+  let osOfflineTimer: ReturnType<typeof setTimeout> | undefined;
+  let confirmOfflineTimer: ReturnType<typeof setTimeout> | undefined;
+  let recoveryTimer: ReturnType<typeof setTimeout> | undefined;
+  let refreshNativeStatus: (() => Promise<void>) | undefined;
   let disposed = false;
   const networkListeners: PluginListenerHandle[] = [];
 
-  function setNativeConnection(connected: boolean) {
+  function hasOsNetwork() {
+    if (app.native && nativeOnline !== undefined) {
+      return nativeOnline;
+    }
+    return online.value;
+  }
+
+  function clearOsOfflineTimer() {
+    if (osOfflineTimer !== undefined) {
+      clearTimeout(osOfflineTimer);
+      osOfflineTimer = undefined;
+    }
+  }
+
+  function clearConfirmOfflineTimer() {
+    if (confirmOfflineTimer !== undefined) {
+      clearTimeout(confirmOfflineTimer);
+      confirmOfflineTimer = undefined;
+    }
+  }
+
+  function clearRecoveryTimer() {
+    if (recoveryTimer !== undefined) {
+      clearTimeout(recoveryTimer);
+      recoveryTimer = undefined;
+    }
+  }
+
+  function abortActiveProbe() {
+    if (probeController) {
+      probeController.abort();
+      probeController = undefined;
+      activeProbeMode = undefined;
+      activeProbeRevision = -1;
+    }
+  }
+
+  function pauseBackgroundProbes() {
+    clearConfirmOfflineTimer();
+    clearRecoveryTimer();
+    abortActiveProbe();
+  }
+
+  function enterOfflineImmediately() {
+    clearOsOfflineTimer();
+    clearConfirmOfflineTimer();
+    abortActiveProbe();
+    networkRevision++;
+    void session.setConnection(false);
+    session.mounted = true;
+  }
+
+  function scheduleOsOffline() {
     if (disposed) {
       return;
     }
-    if (nativeOnline !== connected) {
+    if (!session.mounted) {
+      enterOfflineImmediately();
+      return;
+    }
+    if (app.offline) {
+      clearRecoveryTimer();
+      abortActiveProbe();
+      void session.setConnection(false);
+      return;
+    }
+    if (osOfflineTimer !== undefined) {
+      return;
+    }
+    osOfflineTimer = setTimeout(() => {
+      osOfflineTimer = undefined;
+      if (!disposed && !hasOsNetwork()) {
+        enterOfflineImmediately();
+      }
+    }, osOfflineGraceMs);
+  }
+
+  async function probeHealth(signal: AbortSignal): Promise<boolean | undefined> {
+    try {
+      await request("/api/health", {
+        method: "GET",
+        cache: "no-store",
+        timeout: probeTimeoutMs,
+        signal,
+      });
+      return true;
+    } catch (error) {
+      if (signal.aborted) {
+        return undefined;
+      }
+      const status = responseStatus(error);
+      return status !== undefined && status !== 502 && status !== 503 && status !== 504;
+    }
+  }
+
+  function scheduleRecovery(immediate = false) {
+    if (
+      disposed ||
+      !session.mounted ||
+      !app.offline ||
+      visible.value !== "visible" ||
+      !hasOsNetwork() ||
+      session.signingOut
+    ) {
+      return;
+    }
+    clearRecoveryTimer();
+    if (immediate) {
+      recoveryAttempt = 0;
+      void runRecoveryProbe(true);
+      return;
+    }
+    const index = Math.min(recoveryAttempt, recoveryBackoffMs.length - 1);
+    const delay = recoveryBackoffMs[index] ?? 10_000;
+    recoveryAttempt++;
+    recoveryTimer = setTimeout(() => {
+      recoveryTimer = undefined;
+      void runRecoveryProbe(false);
+    }, delay);
+  }
+
+  async function runRecoveryProbe(forceRestart: boolean) {
+    if (
+      disposed ||
+      !session.mounted ||
+      !app.offline ||
+      visible.value !== "visible" ||
+      !hasOsNetwork() ||
+      session.signingOut
+    ) {
+      return;
+    }
+    if (probeController) {
+      if (
+        activeProbeMode === "recover" &&
+        (!forceRestart || activeProbeRevision === networkRevision)
+      ) {
+        return;
+      }
+      abortActiveProbe();
+    }
+    clearRecoveryTimer();
+    const revision = networkRevision;
+    const controller = new AbortController();
+    probeController = controller;
+    activeProbeMode = "recover";
+    activeProbeRevision = revision;
+    let reachable: boolean | undefined;
+    try {
+      reachable = await probeHealth(controller.signal);
+    } finally {
+      if (probeController === controller) {
+        probeController = undefined;
+        activeProbeMode = undefined;
+        activeProbeRevision = -1;
+      }
+    }
+    if (disposed || reachable === undefined || revision !== networkRevision || !app.offline) {
+      return;
+    }
+    if (!reachable) {
+      scheduleRecovery(false);
+      return;
+    }
+    lastReachableAt = Date.now();
+    await session.setConnection(true);
+    if (!disposed && app.offline && revision === networkRevision) {
+      scheduleRecovery(false);
+    } else if (!app.offline) {
+      recoveryAttempt = 0;
+    }
+  }
+
+  async function verifyConnectivity(confirmStep = false) {
+    if (disposed || !session.mounted || app.offline || visible.value !== "visible") {
+      return;
+    }
+    if (!hasOsNetwork()) {
+      scheduleOsOffline();
+      return;
+    }
+    if (probeController) {
+      return;
+    }
+    if (!confirmStep && confirmOfflineTimer !== undefined) {
+      return;
+    }
+    const revision = networkRevision;
+    const startedAt = Date.now();
+    const controller = new AbortController();
+    probeController = controller;
+    activeProbeMode = "verify-offline";
+    activeProbeRevision = revision;
+    let reachable: boolean | undefined;
+    try {
+      reachable = await probeHealth(controller.signal);
+    } finally {
+      if (probeController === controller) {
+        probeController = undefined;
+        activeProbeMode = undefined;
+        activeProbeRevision = -1;
+      }
+    }
+    if (disposed || reachable === undefined || revision !== networkRevision || app.offline) {
+      return;
+    }
+    if (reachable || lastReachableAt >= startedAt) {
+      lastReachableAt = Math.max(lastReachableAt, Date.now());
+      clearConfirmOfflineTimer();
+      return;
+    }
+    if (!confirmStep) {
+      clearConfirmOfflineTimer();
+      confirmOfflineTimer = setTimeout(() => {
+        confirmOfflineTimer = undefined;
+        void verifyConnectivity(true);
+      }, offlineConfirmDelayMs);
+      return;
+    }
+    void session.setConnection(false);
+  }
+
+  function handleNativeStatus(connected: boolean, options?: { fromResume?: boolean }) {
+    if (disposed) {
+      return;
+    }
+    const changed = nativeOnline !== connected;
+    if (changed) {
       networkRevision++;
     }
     nativeOnline = connected;
     if (connected) {
+      clearOsOfflineTimer();
       if (!session.mounted) {
         session.mounted = true;
       } else if (app.offline) {
-        void probeNativeApi();
+        scheduleRecovery(true);
+      } else if (
+        (changed || options?.fromResume) &&
+        Date.now() - lastReachableAt > recentReachableWindowMs
+      ) {
+        void verifyConnectivity(false);
       }
     } else {
-      void session.setConnection(false);
-      session.mounted = true;
+      scheduleOsOffline();
     }
   }
 
-  async function probeNativeApi() {
-    if (probing) {
+  const stopNetworkActivity = networkActivity?.on((status) => {
+    if (disposed) {
       return;
     }
-    const revision = networkRevision;
-    probing = true;
-    let reachable = true;
-    try {
-      await request("/api/auth-providers", { cache: "no-store", timeout: 3000 });
-    } catch (error) {
-      const status = responseStatus(error);
-      reachable = status !== undefined && status !== 502 && status !== 503 && status !== 504;
-    } finally {
-      probing = false;
+    if (status === "reachable") {
+      lastReachableAt = Date.now();
+      clearConfirmOfflineTimer();
+      if (activeProbeMode === "verify-offline") {
+        abortActiveProbe();
+      }
+      if (app.offline && session.mounted && !session.signingOut && hasOsNetwork()) {
+        void session.setConnection(true);
+      }
+      return;
     }
-    if (!disposed && revision === networkRevision) {
-      void session.setConnection(reachable);
-      session.mounted = true;
-    } else if (!disposed && nativeOnline && (!session.mounted || app.offline)) {
-      void probeNativeApi();
+    if (session.mounted && !app.offline && visible.value === "visible") {
+      void verifyConnectivity(false);
     }
-  }
+  });
 
   useIntervalFn(() => {
     if (
-      !app.native ||
       !session.mounted ||
+      app.offline ||
       visible.value !== "visible" ||
-      !(nativeOnline ?? online.value)
+      !hasOsNetwork() ||
+      Date.now() - lastReachableAt < recentReachableWindowMs
     ) {
       return;
     }
-    // A VPN can report a validated connection after its underlying network goes away.
-    void probeNativeApi();
-  }, 15_000);
+    // Catch silent network loss (such as a stalled VPN or router without upstream internet).
+    void verifyConnectivity(false);
+  }, onlineHeartbeatIntervalMs);
+
+  watch(
+    () => app.offline,
+    (isOffline) => {
+      if (isOffline) {
+        clearOsOfflineTimer();
+        clearConfirmOfflineTimer();
+        recoveryAttempt = 0;
+        scheduleRecovery(false);
+      } else {
+        clearRecoveryTimer();
+        recoveryAttempt = 0;
+        lastReachableAt = Date.now();
+      }
+    },
+  );
 
   watch(online, (isOnline) => {
-    if (session.mounted && (nativeOnline === undefined || !isOnline)) {
-      void session.setConnection(isOnline);
+    if (!session.mounted) {
+      return;
+    }
+    if (app.native && nativeOnline !== undefined) {
+      void refreshNativeStatus?.();
+      return;
+    }
+    networkRevision++;
+    if (isOnline) {
+      clearOsOfflineTimer();
+      if (app.offline) {
+        scheduleRecovery(true);
+      }
+    } else {
+      scheduleOsOffline();
     }
   });
+
+  watch(visible, (state) => {
+    if (state !== "visible") {
+      pauseBackgroundProbes();
+      return;
+    }
+    if (!session.mounted) {
+      return;
+    }
+    if (app.native && refreshNativeStatus) {
+      if (Date.now() - lastNativeResumeAt > 1_000) {
+        void refreshNativeStatus();
+      }
+      return;
+    }
+    if (app.offline && hasOsNetwork()) {
+      scheduleRecovery(true);
+    } else if (
+      !app.offline &&
+      hasOsNetwork() &&
+      Date.now() - lastReachableAt > recentReachableWindowMs
+    ) {
+      void verifyConnectivity(false);
+    }
+  });
+
   useEventListener("storage", ({ key }) => {
     if (!app.native && key === offlineSessionKey) {
       void session.syncOfflineSession();
@@ -102,8 +409,8 @@ export function useAppSession() {
     }
   });
   useEventListener("focus", () => {
-    if (!app.native && app.offline && online.value) {
-      void session.setConnection(true);
+    if (!app.native && session.mounted && app.offline && hasOsNetwork()) {
+      scheduleRecovery(true);
     }
   });
   watch(
@@ -154,19 +461,14 @@ export function useAppSession() {
         import("@capacitor/app"),
       ]);
       let statusRevision = 0;
-      async function refreshStatus() {
+      refreshNativeStatus = async () => {
         const revision = ++statusRevision;
         const status = await Network.getStatus().catch(() => undefined);
-        if (revision !== statusRevision) {
+        if (disposed || revision !== statusRevision) {
           return;
         }
-        const connected = status?.connected ?? online.value;
-        const checkApi = connected && session.mounted;
-        setNativeConnection(connected);
-        if (checkApi && !disposed) {
-          void probeNativeApi();
-        }
-      }
+        handleNativeStatus(status?.connected ?? online.value, { fromResume: true });
+      };
       const add = (listener: PluginListenerHandle) => {
         if (disposed) {
           void listener.remove();
@@ -178,16 +480,19 @@ export function useAppSession() {
         Network.getStatus().catch(() => undefined),
         Network.addListener("networkStatusChange", ({ connected }) => {
           statusRevision++;
-          setNativeConnection(connected);
+          handleNativeStatus(connected);
         }).then(add),
         App.addListener("appStateChange", ({ isActive }) => {
           if (isActive) {
-            void refreshStatus();
+            lastNativeResumeAt = Date.now();
+            void refreshNativeStatus?.();
+          } else {
+            pauseBackgroundProbes();
           }
         }).then(add),
       ]);
       if (!disposed && statusRevision === 0) {
-        setNativeConnection(status?.connected ?? online.value);
+        handleNativeStatus(status?.connected ?? online.value);
       }
     } catch {
       if (!disposed && !session.mounted) {
@@ -219,6 +524,9 @@ export function useAppSession() {
   );
   onBeforeUnmount(() => {
     disposed = true;
+    stopNetworkActivity?.();
+    clearOsOfflineTimer();
+    pauseBackgroundProbes();
     for (const listener of networkListeners) {
       void listener.remove();
     }

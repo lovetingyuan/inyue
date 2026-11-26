@@ -2,9 +2,11 @@ import { useSessionStore } from "~/stores/session";
 import { useAppStore } from "~/stores/app";
 import { createError, useNuxtApp, useRequestEvent, useRequestHeader, useRuntimeConfig } from "#app";
 import { Capacitor } from "@capacitor/core";
+import { useEventBus } from "@vueuse/core";
 import type { NitroFetchOptions, NitroFetchRequest } from "nitropack";
 import { offlineOwnerHeader } from "~~/shared/offline-library";
 import { responseStatus } from "~/utils/library-error";
+import { networkActivityEvent } from "~/utils/music-query-keys";
 
 const sessionKey = "music-session";
 let nativeToken: string | null | undefined;
@@ -39,6 +41,9 @@ export function useMusicApi() {
   const pinia = useNuxtApp().$pinia;
   const event = useRequestEvent();
   const cookie = useRequestHeader("cookie");
+  const networkActivity = import.meta.client
+    ? useEventBus<"reachable" | "unreachable">(networkActivityEvent)
+    : undefined;
 
   function apiOrigin() {
     if (!native || (import.meta.dev && !config.mobileApiOrigin)) {
@@ -58,7 +63,10 @@ export function useMusicApi() {
 
   async function request<T>(path: string, options?: NitroFetchOptions<NitroFetchRequest>) {
     const method = options?.method?.toUpperCase() ?? "GET";
-    const publicRequest = method === "GET" && path === "/api/auth-providers";
+    const isHealthProbe = path === "/api/health";
+    const publicRequest =
+      (method === "GET" || method === "HEAD") &&
+      (path === "/api/auth-providers" || isHealthProbe);
     const library = /^\/api\/(songs|playlists|integration)(\/|$)/.test(path);
     const authorize = path === "/api/media/authorize";
     const hasOwner =
@@ -93,13 +101,17 @@ export function useMusicApi() {
     try {
       const response = await globalThis.$fetch.raw<T>(path, {
         retry: 0,
-        timeout: (native || localEvent) && method === "GET" ? 5000 : undefined,
+        timeout:
+          method === "GET" ? (localEvent ? 5000 : native ? 10_000 : undefined) : undefined,
         ...options,
         ...(localEvent ? { context: localEvent.context } : {}),
         headers,
         baseURL,
         credentials: native ? "omit" : "same-origin",
       });
+      if (!isHealthProbe) {
+        networkActivity?.emit("reachable");
+      }
       if (session && userId && generation !== undefined) {
         if (session.generation !== generation) {
           throw new DOMException("Account changed", "AbortError");
@@ -119,16 +131,17 @@ export function useMusicApi() {
       if (userId && generation !== undefined && (status === 401 || status === 403)) {
         session?.rejectSession(userId, generation);
       }
-      if (
-        native &&
-        session &&
-        !options?.signal?.aborted &&
-        (status === 502 ||
+      if (!isHealthProbe && !options?.signal?.aborted) {
+        if (status !== undefined && status !== 502 && status !== 503 && status !== 504) {
+          networkActivity?.emit("reachable");
+        } else if (
+          status === 502 ||
           status === 503 ||
           status === 504 ||
-          (status === undefined && error instanceof Error && error.name === "FetchError"))
-      ) {
-        void session.setConnection(false);
+          (status === undefined && error instanceof Error && error.name === "FetchError")
+        ) {
+          networkActivity?.emit("unreachable");
+        }
       }
       throw error;
     }

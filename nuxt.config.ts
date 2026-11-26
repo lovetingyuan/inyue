@@ -194,8 +194,11 @@ export default defineNuxtConfig({
       navigateFallback: "",
       runtimeCaching: [
         {
-          urlPattern: ({ url, sameOrigin }) =>
-            sameOrigin && url.pathname === "/api/auth-providers" && !url.search,
+          urlPattern: ({ url, sameOrigin, request }) =>
+            sameOrigin &&
+            url.pathname === "/api/auth-providers" &&
+            !url.search &&
+            request.cache !== "no-store",
           handler: "NetworkFirst",
           options: {
             cacheName: "inyue-public-api-v1",

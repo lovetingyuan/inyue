@@ -5,14 +5,13 @@ import { usePlayerStore } from "~/stores/player";
 import PlaybackSlider from "~/components/PlaybackSlider.vue";
 import PlaybackQueueDialog from "~/components/PlaybackQueueDialog.vue";
 import PlaybackProgress from "~/components/PlaybackProgress.vue";
+import PlayPauseButton from "~/components/PlayPauseButton.vue";
 import NowPlayingDialog from "~/components/NowPlayingDialog.vue";
 import MusicArtwork from "~/components/MusicArtwork.vue";
 import { computed, ref, useTemplateRef, watch } from "vue";
 import {
   ListMusic,
   ListOrdered,
-  Pause,
-  Play,
   Repeat,
   Repeat1,
   Shuffle,
@@ -220,7 +219,7 @@ async function cycleMode() {
           />
           <span class="min-w-0 flex-1">
             <span
-              class="block w-fit max-w-full truncate text-sm font-semibold"
+              class="block w-fit max-w-full truncate text-base font-semibold"
               :style="getNowPlayingTransitionStyle(nowPlayingTransition, 'player', 'title')"
             >
               {{ track.title }}
@@ -251,25 +250,15 @@ async function cycleMode() {
                 />
               </template>
             </AsyncButton>
-            <AsyncButton
+            <PlayPauseButton
               class="btn btn-circle relative size-10 border-0 bg-neutral-content text-player-background hover:bg-neutral-content/90"
-              :aria-label="playing ? '暂停' : '播放'"
+              icon-class="size-5"
+              :playing="playing"
               :loading="loading"
-              :aria-keyshortcuts="shortcutsEnabled ? 'Space' : undefined"
-              :title="shortcutsEnabled ? `${playing ? '暂停' : '播放'}（空格）` : undefined"
+              :shortcuts-enabled="shortcutsEnabled"
               :style="getNowPlayingTransitionStyle(nowPlayingTransition, 'player', 'play')"
               :action="player.toggle"
-            >
-              <template #icon>
-                <component
-                  :is="playing ? Pause : Play"
-                  class="size-5 shrink-0"
-                  :stroke-width="1.8"
-                  aria-hidden="true"
-                  fill="currentColor"
-                />
-              </template>
-            </AsyncButton>
+            />
             <AsyncButton
               class="btn btn-ghost btn-circle text-neutral-content hover:bg-neutral-content/14"
               aria-label="下一首"

@@ -4,6 +4,7 @@ import AsyncButton from "~/components/AsyncButton.vue";
 import { usePlayerStore } from "~/stores/player";
 import PlaybackSlider from "~/components/PlaybackSlider.vue";
 import PlaybackProgress from "~/components/PlaybackProgress.vue";
+import PlayPauseButton from "~/components/PlayPauseButton.vue";
 import MusicArtwork from "~/components/MusicArtwork.vue";
 import {
   computed,
@@ -14,7 +15,7 @@ import {
   useTemplateRef,
   watch,
 } from "vue";
-import { ChevronDown, Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from "@lucide/vue";
+import { ChevronDown, SkipBack, SkipForward, Volume2, VolumeX } from "@lucide/vue";
 import { useTimeoutFn } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import {
@@ -50,6 +51,8 @@ const { current: track, position, volume, playing, loading, error } = storeToRef
 const dialog = useTemplateRef("dialog");
 const modalBox = useTemplateRef("modalBox");
 const progressBar = useTemplateRef("progressBar");
+const coverToggle = useTemplateRef<HTMLElement>("coverToggle");
+const lyricsToggle = useTemplateRef<HTMLButtonElement>("lyricsToggle");
 const dialogOpen = ref(false);
 const contentMounted = ref(false);
 const vtActive = ref(false);
@@ -57,12 +60,15 @@ const hasLyrics = computed(() =>
   Boolean(track.value?.lyrics && parseLrc(track.value.lyrics).length),
 );
 const showLyrics = ref(false);
+const animateFlip = ref(false);
+const flipping = ref(false);
+const useFlipStage = computed(() => hasLyrics.value && (!vtActive.value || showLyrics.value));
 const showCoverAura = computed(
   () =>
     contentMounted.value &&
     !vtActive.value &&
     playing.value &&
-    !(hasLyrics.value && showLyrics.value),
+    (!(hasLyrics.value && showLyrics.value) || flipping.value),
 );
 const lyricPosition = computed(() => progressBar.value?.displayedPosition ?? position.value);
 const scrubbing = computed(() => progressBar.value?.scrubbing ?? false);
@@ -70,13 +76,36 @@ const { start: scheduleUnmount, stop: cancelUnmount } = useTimeoutFn(finishClose
   immediate: false,
 });
 
-watch(
-  [() => track.value?.id, hasLyrics],
-  () => {
-    showLyrics.value = hasLyrics.value;
-  },
-  { immediate: true },
-);
+function resetLyricsView() {
+  animateFlip.value = false;
+  flipping.value = false;
+  showLyrics.value = hasLyrics.value;
+}
+
+async function toggleLyrics(event: MouseEvent) {
+  if (!hasLyrics.value || vtActive.value) {
+    return;
+  }
+  const restoreFocus =
+    event.currentTarget instanceof HTMLElement && event.currentTarget.matches(":focus-visible");
+  animateFlip.value = true;
+  flipping.value = true;
+  showLyrics.value = !showLyrics.value;
+  if (!restoreFocus) {
+    return;
+  }
+  await nextTick();
+  const nextTarget = showLyrics.value ? lyricsToggle.value : coverToggle.value;
+  nextTarget?.focus({ preventScroll: true });
+}
+
+function handleFlipTransitionEnd(event: TransitionEvent) {
+  if (event.target === event.currentTarget && event.propertyName === "transform") {
+    flipping.value = false;
+  }
+}
+
+watch([() => track.value?.id, hasLyrics], resetLyricsView, { immediate: true });
 
 function resetTransition() {
   vtActive.value = false;
@@ -90,7 +119,7 @@ function finishClose() {
     return;
   }
   contentMounted.value = false;
-  showLyrics.value = hasLyrics.value;
+  resetLyricsView();
 }
 
 function handleBoxTransitionEnd(event: TransitionEvent) {
@@ -110,7 +139,7 @@ async function open() {
   }
   cancelUnmount();
   if (!track.value || !canStartNowPlayingTransition()) {
-    showLyrics.value = hasLyrics.value;
+    resetLyricsView();
     contentMounted.value = true;
     dialogOpen.value = true;
     showMusicDialog(dialog.value);
@@ -131,7 +160,7 @@ async function open() {
   try {
     const transition = document.startViewTransition(async () => {
       transitionState.value = { target: "dialog", includeCover };
-      showLyrics.value = hasLyrics.value;
+      resetLyricsView();
       contentMounted.value = true;
       dialogOpen.value = true;
       showMusicDialog(dialog.value);
@@ -142,7 +171,7 @@ async function open() {
     });
     await transition.finished;
   } catch {
-    showLyrics.value = hasLyrics.value;
+    resetLyricsView();
     contentMounted.value = true;
     dialogOpen.value = true;
     showMusicDialog(dialog.value);
@@ -178,7 +207,7 @@ async function requestClose() {
       transitionState.value = { target: "player", includeCover };
       dialogOpen.value = false;
       contentMounted.value = false;
-      showLyrics.value = hasLyrics.value;
+      resetLyricsView();
       dialog.value?.close();
       await nextTick();
     });
@@ -189,7 +218,7 @@ async function requestClose() {
     }
     dialogOpen.value = false;
     contentMounted.value = false;
-    showLyrics.value = hasLyrics.value;
+    resetLyricsView();
   } finally {
     resetTransition();
   }
@@ -273,55 +302,90 @@ defineExpose({
       </header>
       <div
         v-if="contentMounted && track"
-        class="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pt-5 pb-2.5 sm:px-8"
+        class="flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto px-6 pt-5 pb-2.5 sm:px-8"
       >
         <div class="m-auto grid w-full max-w-sm shrink-0 gap-[clamp(0.875rem,2.2dvh,1.375rem)]">
           <div
             class="relative grid place-items-center [--cover-width:min(18rem,42dvh)] sm:[--cover-width:min(16.5rem,36dvh)]"
+            :class="useFlipStage && 'perspective-[1000px]'"
           >
-            <component
-              :is="hasLyrics ? 'button' : 'div'"
-              :type="hasLyrics ? 'button' : undefined"
-              class="grid w-full place-items-center"
+            <div
+              class="relative grid w-full place-items-center"
               :class="[
-                hasLyrics &&
-                  'z-10 cursor-pointer select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary',
-                hasLyrics && showLyrics ? 'rounded-xl' : 'max-w-(--cover-width) rounded-[1.5rem]',
+                useFlipStage && 'transform-3d',
+                flipping && 'will-change-transform',
+                animateFlip && !vtActive
+                  ? 'transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]'
+                  : 'transition-none',
+                useFlipStage && showLyrics ? 'rotate-y-180' : useFlipStage && 'rotate-y-0',
               ]"
-              :aria-pressed="hasLyrics ? showLyrics : undefined"
-              :aria-label="hasLyrics ? (showLyrics ? '显示封面' : '显示歌词') : undefined"
-              @click="hasLyrics && (showLyrics = !showLyrics)"
+              @transitionend="handleFlipTransitionEnd"
             >
-              <span
-                class="isolate block w-full max-w-(--cover-width) [--aura-radius:1.5rem]"
+              <div
+                class="col-start-1 row-start-1 grid w-full place-items-center"
                 :class="[
-                  showCoverAura ? 'aura aura-dual text-primary' : 'p-0.5',
-                  { invisible: hasLyrics && showLyrics },
+                  useFlipStage && 'rotate-y-0 backface-hidden',
+                  hasLyrics && showLyrics && 'pointer-events-none',
                 ]"
+                :inert="hasLyrics && showLyrics"
               >
-                <span class="inline-grid w-full align-top [@media(hover:hover)]:hover-3d">
-                  <MusicArtwork
-                    data-now-playing-cover
-                    eager
-                    :src="track.coverUrl"
-                    :style="getNowPlayingTransitionStyle(transitionState, 'dialog', 'cover')"
-                    class="w-full rounded-[1.5rem]! shadow-xl shadow-base-content/15 ring-1 ring-base-content/8"
-                  />
-                  <span v-for="zone in 8" :key="zone" aria-hidden="true" />
-                </span>
-              </span>
-            </component>
-            <MusicLyrics
-              v-if="hasLyrics && showLyrics"
-              :lyrics="track.lyrics"
-              :position="lyricPosition"
-              :scrubbing="scrubbing"
-              class="absolute inset-0"
-            />
+                <component
+                  :is="hasLyrics ? 'button' : 'div'"
+                  ref="coverToggle"
+                  :type="hasLyrics ? 'button' : undefined"
+                  class="grid w-full max-w-(--cover-width) place-items-center rounded-[1.5rem]"
+                  :class="
+                    hasLyrics &&
+                    'cursor-pointer select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary'
+                  "
+                  :aria-pressed="hasLyrics ? showLyrics : undefined"
+                  :aria-label="hasLyrics ? '显示歌词' : undefined"
+                  @click="hasLyrics && toggleLyrics($event)"
+                >
+                  <span
+                    class="isolate block w-full [--aura-radius:1.5rem]"
+                    :class="showCoverAura ? 'aura aura-dual text-primary' : 'p-0.5'"
+                  >
+                    <span class="inline-grid w-full align-top [@media(hover:hover)]:hover-3d">
+                      <MusicArtwork
+                        data-now-playing-cover
+                        eager
+                        :src="track.coverUrl"
+                        :style="getNowPlayingTransitionStyle(transitionState, 'dialog', 'cover')"
+                        class="w-full rounded-[1.5rem]! shadow-xl shadow-base-content/15 ring-1 ring-base-content/8"
+                      />
+                      <span v-for="zone in 8" :key="zone" aria-hidden="true" />
+                    </span>
+                  </span>
+                </component>
+              </div>
+              <div
+                v-if="hasLyrics"
+                v-show="useFlipStage"
+                class="absolute inset-0 col-start-1 row-start-1 rotate-y-180 backface-hidden"
+                :class="!showLyrics && 'pointer-events-none'"
+                :inert="!showLyrics"
+              >
+                <button
+                  ref="lyricsToggle"
+                  type="button"
+                  class="absolute inset-0 z-10 size-full cursor-pointer rounded-xl select-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+                  :aria-pressed="showLyrics"
+                  aria-label="显示封面"
+                  @click="toggleLyrics($event)"
+                />
+                <MusicLyrics
+                  :lyrics="track.lyrics"
+                  :position="lyricPosition"
+                  :scrubbing="scrubbing"
+                  class="size-full"
+                />
+              </div>
+            </div>
           </div>
           <div class="min-w-0 mt-4">
             <p
-              class="w-fit max-w-full truncate text-[clamp(1.125rem,4vw,1.375rem)] leading-tight font-bold tracking-tight"
+              class="w-fit max-w-full truncate text-[clamp(1.375rem,5vw,1.625rem)] leading-tight font-bold tracking-tight"
               :title="track.title"
               :style="getNowPlayingTransitionStyle(transitionState, 'dialog', 'title')"
             >
@@ -361,25 +425,15 @@ defineExpose({
                 />
               </template>
             </AsyncButton>
-            <AsyncButton
+            <PlayPauseButton
               class="btn btn-primary btn-circle relative size-16 shadow-lg shadow-primary/20"
-              :aria-label="playing ? '暂停' : '播放'"
+              icon-class="size-7"
+              :playing="playing"
               :loading="loading"
-              :aria-keyshortcuts="shortcutsEnabled ? 'Space' : undefined"
-              :title="shortcutsEnabled ? `${playing ? '暂停' : '播放'}（空格）` : undefined"
+              :shortcuts-enabled="shortcutsEnabled"
               :style="getNowPlayingTransitionStyle(transitionState, 'dialog', 'play')"
               :action="player.toggle"
-            >
-              <template #icon>
-                <component
-                  :is="playing ? Pause : Play"
-                  class="size-7 shrink-0"
-                  :stroke-width="1.8"
-                  aria-hidden="true"
-                  fill="currentColor"
-                />
-              </template>
-            </AsyncButton>
+            />
             <AsyncButton
               class="btn btn-ghost btn-circle btn-lg"
               aria-label="下一首"

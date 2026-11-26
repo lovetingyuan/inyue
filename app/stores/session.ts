@@ -46,7 +46,7 @@ export const useSessionStore = defineStore("session", () => {
           request<Account>("/api/account", {
             cache: "no-store",
             retry: app.offline ? 0 : 1,
-            timeout: 5000,
+            timeout: 8000,
             signal,
           }),
           offlinePromise,
@@ -87,6 +87,7 @@ export const useSessionStore = defineStore("session", () => {
         }
         if (
           offline &&
+          accountQuery.data.value === undefined &&
           (status === undefined || status === 502 || status === 503 || status === 504)
         ) {
           offlineState.value = offline.state?.revision === revokedScope ? undefined : offline.state;
