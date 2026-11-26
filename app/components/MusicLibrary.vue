@@ -14,19 +14,21 @@ import {
 import PlayingBars from "~/components/PlayingBars.vue";
 import MusicArtwork from "~/components/MusicArtwork.vue";
 import LibraryPlayer from "~/components/LibraryPlayer.vue";
-import { computed, ref, useTemplateRef, watch } from "vue";
-import { useAsyncState, useTimeoutFn } from "@vueuse/core";
+import LibrarySearchInput from "~/components/LibrarySearchInput.vue";
+import { computed, onScopeDispose, useTemplateRef, watchEffect } from "vue";
+import { useAsyncState } from "@vueuse/core";
 import { useRouter } from "#app";
 import { CircleAlert, Clock, FileCheck, Music, Play, Search } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { Song } from "~~/shared/types/library";
 import { useSongDownload } from "~/composables/useSongDownload";
+import { useSongShare } from "~/composables/useSongShare";
 import SongActionMenu from "~/components/SongActionMenu.vue";
 import SongManagementDialog from "~/components/SongManagementDialog.vue";
 
 const library = useLibraryStore();
 const app = useAppStore();
-const { playlist, search, term } = storeToRefs(library);
+const { playlist, term } = storeToRefs(library);
 const { current, playing, loading: playbackLoading } = storeToRefs(usePlayerStore());
 const router = useRouter();
 const showLibrary = computed(() => router.currentRoute.value.path === "/");
@@ -56,6 +58,7 @@ const error = computed(() => {
 });
 const songManagement = useTemplateRef("songManagement");
 const { download: downloadSong, isDownloading } = useSongDownload();
+const { share: shareSong, isSharing } = useSongShare({ fallbackDownload: downloadSong });
 const title = computed(() =>
   term.value
     ? "搜索结果"
@@ -79,22 +82,11 @@ const { isLoading: retrying, executeImmediate: retryLibrary } = useAsyncState(
   undefined,
   { immediate: false },
 );
-const isComposing = ref(false);
-const searching = computed(() => Boolean(term.value) && loading.value);
-const { start: scheduleSearch, stop: cancelSearch } = useTimeoutFn(library.submitSearch, 300, {
-  immediate: false,
+watchEffect(() => {
+  library.searching = Boolean(term.value) && loading.value;
 });
-
-watch([() => search.value.trim(), isComposing], ([keyword, composing]) => {
-  cancelSearch();
-  if (composing || keyword === term.value) {
-    return;
-  }
-  if (keyword) {
-    scheduleSearch();
-  } else {
-    library.submitSearch();
-  }
+onScopeDispose(() => {
+  library.searching = false;
 });
 
 function play(song: Song) {
@@ -116,31 +108,11 @@ async function playFirst() {
       class="flex min-h-0 min-w-0 flex-1 flex-col bg-base-100"
       aria-label="歌曲列表"
     >
-      <div class="flex items-center gap-2 px-4 pb-3 pt-2 sm:gap-3 sm:px-6 md:pt-4">
-        <form role="search" class="flex min-w-0 flex-1" :aria-busy="searching" @submit.prevent>
-          <div class="input min-w-0 w-full rounded-full border-transparent bg-base-200">
-            <span
-              class="-ml-1 grid size-6 shrink-0 place-items-center text-base-content/70"
-              aria-hidden="true"
-            >
-              <span v-if="searching" class="loading loading-spinner loading-xs" />
-              <Search v-else class="size-4" :stroke-width="1.8" />
-            </span>
-            <input
-              v-model="search"
-              type="search"
-              class="min-w-0"
-              aria-label="搜索歌曲"
-              placeholder="搜索歌曲、歌手或专辑"
-              @compositionstart="isComposing = true"
-              @compositionend="isComposing = false"
-              @change="isComposing = false"
-            />
-          </div>
-        </form>
+      <div class="hidden items-center gap-3 px-6 pt-4 pb-3 md:flex">
+        <LibrarySearchInput />
       </div>
       <div
-        class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 pb-5 sm:px-6"
+        class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 pt-1 pb-5 sm:px-6 md:pt-0"
       >
         <div
           class="flex shrink-0 items-center gap-3 rounded-box bg-linear-to-br from-primary/17 to-base-200/55 p-2 sm:gap-4 sm:p-3"
@@ -334,9 +306,11 @@ async function playFirst() {
                 :offline="app.offline"
                 :cached="Boolean(offlineAudio?.has(song.id))"
                 :downloading="isDownloading(song.id)"
+                :sharing="isSharing(song.id)"
                 @details="songManagement?.open($event)"
                 @edit="songManagement?.openEdit($event)"
                 @playlists="songManagement?.openPlaylists($event)"
+                @share="shareSong($event)"
                 @download="downloadSong($event)"
                 @delete="songManagement?.openDelete($event)"
               />

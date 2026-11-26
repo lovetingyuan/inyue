@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { useSessionStore } from "~/stores/session";
 import { useAppStore } from "~/stores/app";
+import { useLibraryStore } from "~/stores/library";
 import PlaylistNavigation from "~/components/PlaylistNavigation.vue";
 import AccountAvatar from "~/components/AccountAvatar.vue";
 import AccountSettingsDialog from "~/components/AccountSettingsDialog.vue";
-import { nextTick, onBeforeUnmount, onMounted, useTemplateRef, watch } from "vue";
+import LibrarySearchInput from "~/components/LibrarySearchInput.vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, useTemplateRef, watch } from "vue";
 import { NuxtLink } from "#components";
 import { useRoute } from "#app";
-import { Menu, Plus, X } from "@lucide/vue";
-import { useMediaQuery } from "@vueuse/core";
+import { Menu, Plus, Search, X } from "@lucide/vue";
+import { onClickOutside, useMediaQuery } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import PlaylistEditorDialog from "~/components/PlaylistEditorDialog.vue";
 import { usePlaylistQuery } from "~/composables/useLibraryQueries";
@@ -18,20 +20,63 @@ defineOptions({ name: "LibraryLayout" });
 
 const isDev = import.meta.dev;
 const app = useAppStore();
+const library = useLibraryStore();
 const { drawerOpen, offline } = storeToRefs(app);
+const { search, term, searchOpen } = storeToRefs(library);
 const { account, userId } = storeToRefs(useSessionStore());
 usePlaylistQuery();
 const route = useRoute();
 const desktop = useMediaQuery("(min-width: 48rem)", { ssrWidth: 0 });
+const showMobileSearch = computed(() => route.path === "/");
+const mobileSearchExpanded = computed(
+  () => showMobileSearch.value && (searchOpen.value || Boolean(search.value || term.value)),
+);
 const profile = useTemplateRef("profile");
 const playlistEditor = useTemplateRef("playlistEditor");
 const drawerTrigger = useTemplateRef<HTMLButtonElement>("drawerTrigger");
 const drawerClose = useTemplateRef<HTMLButtonElement>("drawerClose");
+const searchTrigger = useTemplateRef<HTMLButtonElement>("searchTrigger");
+const mobileSearchContainer = useTemplateRef<HTMLDivElement>("mobileSearchContainer");
+const mobileSearchInput = useTemplateRef("mobileSearchInput");
 const drawerRoot = useTemplateRef<HTMLDivElement>("drawerRoot");
 const drawerSide = useTemplateRef<HTMLDivElement>("drawerSide");
 const drawerOverlay = useTemplateRef<HTMLLabelElement>("drawerOverlay");
 const drawerAside = useTemplateRef<HTMLElement>("drawerAside");
 let drawerGesture: ReturnType<typeof attachDrawerGesture> | undefined;
+
+async function openMobileSearch() {
+  searchOpen.value = true;
+  await nextTick();
+  mobileSearchInput.value?.focus();
+}
+
+async function closeMobileSearch(restoreFocus = false) {
+  library.closeSearch();
+  if (restoreFocus) {
+    await nextTick();
+    searchTrigger.value?.focus();
+  }
+}
+
+function handleMobileSearchFocusOut(event: FocusEvent) {
+  const next = event.relatedTarget;
+  if (next instanceof Node && mobileSearchContainer.value?.contains(next)) {
+    return;
+  }
+  if (!search.value.trim() && !term.value) {
+    searchOpen.value = false;
+  }
+}
+
+onClickOutside(
+  mobileSearchContainer,
+  () => {
+    if (searchOpen.value && !search.value.trim() && !term.value) {
+      searchOpen.value = false;
+    }
+  },
+  { ignore: [searchTrigger] },
+);
 
 onMounted(() => {
   if (!drawerRoot.value || !drawerSide.value || !drawerOverlay.value || !drawerAside.value) {
@@ -61,12 +106,16 @@ onBeforeUnmount(() => {
 watch(desktop, (matches) => {
   if (matches) {
     drawerOpen.value = false;
+    searchOpen.value = false;
   }
 });
 watch(
   () => route.path,
   () => {
     drawerOpen.value = false;
+    if (!search.value.trim() && !term.value) {
+      searchOpen.value = false;
+    }
   },
 );
 watch(
@@ -80,8 +129,11 @@ watch(
   drawerOpen,
   (open) => {
     if (open) {
+      if (!search.value.trim() && !term.value) {
+        searchOpen.value = false;
+      }
       drawerClose.value?.focus();
-    } else {
+    } else if (!mobileSearchExpanded.value) {
       drawerTrigger.value?.focus();
     }
   },
@@ -106,27 +158,70 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
     <div class="drawer-content flex min-h-0 flex-col" :inert="drawerOpen">
       <header
         v-if="offline || route.path !== '/songs/new'"
-        class="flex shrink-0 items-center gap-2 px-3 py-2 md:hidden"
+        class="relative flex shrink-0 items-center px-3 py-2 md:hidden"
       >
-        <button
-          ref="drawerTrigger"
-          type="button"
-          class="btn btn-ghost btn-square"
-          aria-label="打开导航菜单"
-          aria-controls="music-sidebar"
-          :aria-expanded="drawerOpen"
-          @click="drawerOpen = true"
+        <div
+          class="flex min-w-0 flex-1 items-center gap-2 transition-opacity duration-150"
+          :class="
+            mobileSearchExpanded
+              ? 'pointer-events-none opacity-0'
+              : 'opacity-100 delay-75'
+          "
+          :inert="mobileSearchExpanded"
+          :aria-hidden="mobileSearchExpanded || undefined"
         >
-          <Menu class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
-        </button>
-        <span class="text-xl font-bold tracking-tight">
-          inYue <small v-if="isDev" class="text-xs font-medium text-base-content/65">dev</small>
-        </span>
-        <span
-          role="status"
-          :class="offline ? 'badge badge-warning badge-sm shrink-0 font-semibold' : 'sr-only'"
-          >{{ offline ? "离线" : "" }}</span
+          <button
+            ref="drawerTrigger"
+            type="button"
+            class="btn btn-ghost btn-square"
+            aria-label="打开导航菜单"
+            aria-controls="music-sidebar"
+            :aria-expanded="drawerOpen"
+            @click="drawerOpen = true"
+          >
+            <Menu class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+          </button>
+          <span class="text-xl font-bold tracking-tight">
+            inYue <small v-if="isDev" class="text-xs font-medium text-base-content/65">dev</small>
+          </span>
+          <span
+            role="status"
+            :class="offline ? 'badge badge-warning badge-sm shrink-0 font-semibold' : 'sr-only'"
+            >{{ offline ? "离线" : "" }}</span
+          >
+          <button
+            v-if="showMobileSearch"
+            ref="searchTrigger"
+            type="button"
+            class="btn btn-ghost btn-circle ml-auto shrink-0"
+            aria-label="搜索歌曲"
+            aria-controls="mobile-library-search"
+            :aria-expanded="mobileSearchExpanded"
+            @click="openMobileSearch"
+          >
+            <Search class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+          </button>
+        </div>
+        <div
+          v-if="showMobileSearch"
+          id="mobile-library-search"
+          ref="mobileSearchContainer"
+          class="absolute inset-x-2 inset-y-1 flex items-center p-1"
+          :class="
+            mobileSearchExpanded
+              ? 'pointer-events-auto opacity-100 [clip-path:inset(0rem_0rem_0rem_0rem_round_9999px)] [transition:clip-path_240ms_cubic-bezier(0.22,1,0.36,1),opacity_120ms_ease-out]'
+              : 'pointer-events-none opacity-0 [clip-path:inset(0.25rem_0.25rem_0.25rem_calc(100%_-_2.75rem)_round_9999px)] [transition:clip-path_200ms_cubic-bezier(0.4,0,0.2,1),opacity_100ms_ease-in_100ms]'
+          "
+          :inert="!mobileSearchExpanded"
+          :aria-hidden="!mobileSearchExpanded || undefined"
+          @focusout="handleMobileSearchFocusOut"
         >
+          <LibrarySearchInput
+            ref="mobileSearchInput"
+            closable
+            @close="closeMobileSearch(true)"
+          />
+        </div>
       </header>
       <main class="flex min-h-0 flex-1 flex-col">
         <slot />

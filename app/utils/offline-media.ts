@@ -102,6 +102,24 @@ export async function exportNativeAudio(options: {
   });
 }
 
+export async function prepareNativeShareAudio(options: {
+  scope?: string;
+  id: string;
+  fileName: string;
+  url?: string;
+  origin?: string;
+}) {
+  const owner = options.scope ? await readOfflineOwner(options.scope) : undefined;
+  return nativeMedia.prepareShareAudio({
+    owner,
+    legacyScope: options.scope,
+    id: options.id,
+    fileName: options.fileName,
+    url: options.url,
+    origin: options.origin,
+  });
+}
+
 export function openNativeDownloads() {
   return nativeMedia.openDownloads();
 }

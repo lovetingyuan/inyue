@@ -43,6 +43,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -54,6 +55,8 @@ public class OfflineMediaPlugin extends Plugin {
     private static final String KEY_TREE_URI = "tree_uri";
     private static final String NOMEDIA = ".nomedia";
     private static final long PRIVATE_QUOTA = 256L * 1024 * 1024;
+    private static final long SHARE_TTL_MS = 30L * 60L * 1000L;
+    private static final int SHARE_MAX_ENTRIES = 3;
     private static final Pattern ID = Pattern.compile("[a-f0-9-]{36}");
     private static final String[] AUDIO = { ".mp3" };
     private static final String[] COVERS = { ".jpg", ".png", ".webp" };
@@ -376,6 +379,44 @@ public class OfflineMediaPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void prepareShareAudio(PluginCall call) {
+        String ownerKey = ownerKey(call.getString("owner"));
+        String legacyScope = call.getString("legacyScope");
+        String id = call.getString("id");
+        String url = call.getString("url");
+        String origin = call.getString("origin");
+        if (!validId(id)) {
+            call.reject("Invalid media key");
+            return;
+        }
+        String safeFileName = sanitizeExportFileName(call.getString("fileName"));
+        writes.execute(() -> {
+            try {
+                pruneShareDir();
+                SafEntry safEntry = null;
+                File privateFile = null;
+                if (ownerKey != null) {
+                    migrateLegacyCache(ownerKey, legacyScope);
+                    Uri treeUri = savedTreeUri();
+                    SafScope saf = treeUri != null ? openSafScope(treeUri, ownerKey, false) : null;
+                    if (saf != null) {
+                        safEntry = cachedSaf(saf.entries, "audio", id);
+                    } else {
+                        privateFile = cachedFile(privateScopeDir(ownerKey), "audio", id);
+                    }
+                }
+                File staged = stageShareFile(safeFileName, safEntry, privateFile, url, origin);
+                JSObject result = new JSObject();
+                result.put("uri", shareFileUri(staged));
+                result.put("fileName", safeFileName);
+                call.resolve(result);
+            } catch (IOException | IllegalArgumentException | SecurityException error) {
+                call.reject("分享歌曲失败，请稍后重试。");
+            }
+        });
+    }
+
+    @PluginMethod
     public void openDownloads(PluginCall call) {
         Activity activity = getActivity();
         if (activity == null || activity.isFinishing()) {
@@ -454,6 +495,7 @@ public class OfflineMediaPlugin extends Plugin {
             migrateLegacyCache(ownerKey, legacyScope);
             cleanTempDir();
             if (removeScope) {
+                deleteDirectory(shareDir());
                 Uri treeUri = savedTreeUri();
                 SafScope saf = treeUri != null ? openSafScope(treeUri, ownerKey, false) : null;
                 if (saf != null) {
@@ -466,6 +508,7 @@ public class OfflineMediaPlugin extends Plugin {
                 call.resolve();
                 return;
             }
+            pruneShareDir();
             File privateDir = privateScopeDir(ownerKey);
             for (File file : files(privateDir)) {
                 if (file.getName().endsWith(".part")) {
@@ -793,6 +836,67 @@ public class OfflineMediaPlugin extends Plugin {
         }
         DownloadedMedia downloaded = downloadToTempFile("audio", url, origin);
         return new PendingExport(downloaded.file, true, fileName);
+    }
+
+    private File stageShareFile(
+        String fileName,
+        SafEntry safEntry,
+        File privateFile,
+        String url,
+        String origin
+    ) throws IOException {
+        File targetDir = new File(shareDir(), UUID.randomUUID().toString());
+        if (!targetDir.mkdirs() && !targetDir.isDirectory()) {
+            throw new IOException("Missing share directory");
+        }
+        File targetFile = new File(targetDir, fileName);
+        boolean success = false;
+        try {
+            if (safEntry != null) {
+                try (
+                    InputStream input = getContext().getContentResolver().openInputStream(safEntry.uri);
+                    OutputStream output = new FileOutputStream(targetFile)
+                ) {
+                    if (input == null) {
+                        throw new IOException("Unable to read cached audio");
+                    }
+                    copyStream(input, output);
+                }
+            } else if (privateFile != null) {
+                try (
+                    InputStream input = new FileInputStream(privateFile);
+                    OutputStream output = new FileOutputStream(targetFile)
+                ) {
+                    copyStream(input, output);
+                }
+            } else {
+                DownloadedMedia downloaded = downloadToTempFile("audio", url, origin);
+                try {
+                    commitFile(downloaded.file, targetFile);
+                } catch (IOException error) {
+                    downloaded.file.delete();
+                    throw error;
+                }
+            }
+            long now = System.currentTimeMillis();
+            targetFile.setLastModified(now);
+            targetDir.setLastModified(now);
+            success = true;
+            return targetFile;
+        } finally {
+            if (!success) {
+                deleteDirectory(targetDir);
+            }
+        }
+    }
+
+    private static String shareFileUri(File file) {
+        return Uri.fromFile(file)
+            .toString()
+            .replace("!", "%21")
+            .replace("'", "%27")
+            .replace("*", "%2A")
+            .replace("~", "%7E");
     }
 
     private static String queryDisplayName(ContentResolver resolver, Uri uri) {
@@ -1322,6 +1426,27 @@ public class OfflineMediaPlugin extends Plugin {
         File dir = tempDir();
         for (File file : files(dir)) {
             file.delete();
+        }
+    }
+
+    private File shareDir() {
+        return new File(getContext().getCacheDir(), "inyue-share");
+    }
+
+    private void pruneShareDir() {
+        File dir = shareDir();
+        File[] children = dir.listFiles();
+        if (children == null || children.length == 0) {
+            return;
+        }
+        long cutoff = System.currentTimeMillis() - SHARE_TTL_MS;
+        Arrays.sort(children, Comparator.comparingLong(File::lastModified));
+        int remaining = children.length;
+        for (File child : children) {
+            if (child.lastModified() < cutoff || remaining > SHARE_MAX_ENTRIES) {
+                deleteDirectory(child);
+                remaining--;
+            }
         }
     }
 

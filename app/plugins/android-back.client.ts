@@ -2,6 +2,7 @@ import type { PluginListenerHandle } from "@capacitor/core";
 import { Capacitor } from "@capacitor/core";
 import { closeTopMusicDialog } from "~/utils/music-dialog";
 import { useAppStore } from "~/stores/app";
+import { useLibraryStore } from "~/stores/library";
 import { defineNuxtPlugin, useNuxtApp, useRouter } from "#app";
 
 export default defineNuxtPlugin({
@@ -11,7 +12,9 @@ export default defineNuxtPlugin({
       return;
     }
     const router = useRouter();
-    const app = useAppStore(useNuxtApp().$pinia);
+    const pinia = useNuxtApp().$pinia;
+    const app = useAppStore(pinia);
+    const library = useLibraryStore(pinia);
     let disposed = false;
     let listener: PluginListenerHandle | undefined;
     void import("@capacitor/app")
@@ -32,6 +35,10 @@ export default defineNuxtPlugin({
             return;
           }
           const route = router.currentRoute.value;
+          if (route.path === "/" && (library.searchOpen || library.search || library.term)) {
+            library.closeSearch();
+            return;
+          }
           if (canGoBack) {
             router.back();
           } else if (route.path !== "/" && route.path !== "/login") {

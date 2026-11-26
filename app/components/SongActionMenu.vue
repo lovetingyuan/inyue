@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, useId, useTemplateRef } from "vue";
-import { Download, Ellipsis, Info, ListPlus, Pencil, Trash2 } from "@lucide/vue";
+import { Download, Ellipsis, Info, ListPlus, Pencil, Share2, Trash2 } from "@lucide/vue";
 import type { SongDetails } from "~~/shared/types/library";
 
 defineOptions({ name: "SongActionMenu" });
@@ -10,12 +10,14 @@ const props = defineProps<{
   offline: boolean;
   cached: boolean;
   downloading: boolean;
+  sharing: boolean;
 }>();
 
 const emit = defineEmits<{
   details: [SongDetails];
   edit: [SongDetails];
   playlists: [SongDetails];
+  share: [SongDetails];
   download: [SongDetails];
   delete: [SongDetails];
 }>();
@@ -26,6 +28,7 @@ const anchorName = `--${menuId}`;
 const menu = useTemplateRef<HTMLElement>("menu");
 const open = ref(false);
 const downloadDisabled = computed(() => props.downloading || (props.offline && !props.cached));
+const shareDisabled = computed(() => props.sharing || (props.offline && !props.cached));
 
 function closeMenu() {
   const element = menu.value;
@@ -38,7 +41,7 @@ function syncOpenState() {
   open.value = Boolean(menu.value?.matches(":popover-open"));
 }
 
-function select(action: "details" | "edit" | "playlists" | "download" | "delete") {
+function select(action: "details" | "edit" | "playlists" | "share" | "download" | "delete") {
   closeMenu();
   switch (action) {
     case "details":
@@ -49,6 +52,9 @@ function select(action: "details" | "edit" | "playlists" | "download" | "delete"
       break;
     case "playlists":
       emit("playlists", props.song);
+      break;
+    case "share":
+      emit("share", props.song);
       break;
     case "download":
       emit("download", props.song);
@@ -71,7 +77,11 @@ function select(action: "details" | "edit" | "playlists" | "download" | "delete"
     :popovertarget="menuId"
     :style="`anchor-name: ${anchorName}`"
   >
-    <span v-if="downloading" class="loading loading-spinner loading-xs" aria-hidden="true" />
+    <span
+      v-if="downloading || sharing"
+      class="loading loading-spinner loading-xs"
+      aria-hidden="true"
+    />
     <Ellipsis v-else class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
   </button>
   <ul
@@ -100,6 +110,19 @@ function select(action: "details" | "edit" | "playlists" | "download" | "delete"
       <button type="button" role="menuitem" :disabled="offline" @click="select('playlists')">
         <ListPlus class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
         加入歌单
+      </button>
+    </li>
+    <li role="none">
+      <button
+        type="button"
+        role="menuitem"
+        :disabled="shareDisabled"
+        :aria-busy="sharing"
+        @click="select('share')"
+      >
+        <span v-if="sharing" class="loading loading-spinner loading-xs" aria-hidden="true" />
+        <Share2 v-else class="size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+        {{ sharing ? "分享中…" : "分享" }}
       </button>
     </li>
     <li role="none">

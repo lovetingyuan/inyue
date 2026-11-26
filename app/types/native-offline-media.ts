@@ -40,12 +40,18 @@ export interface ExportNativeAudioResult {
   directory?: string;
 }
 
+export interface PrepareNativeShareAudioResult {
+  uri: string;
+  fileName: string;
+}
+
 export interface NativeOfflineMediaPlugin {
   read(options: MediaKey): Promise<{ uri?: string }>;
   readMany(options: MediaBatchKey): Promise<{ uris: Record<string, string> }>;
   listAudio(options: OwnerScope): Promise<{ sources: Record<string, string> }>;
   download(options: MediaKey & { url: string; origin: string }): Promise<void>;
   exportAudio(options: ExportNativeAudioOptions): Promise<ExportNativeAudioResult>;
+  prepareShareAudio(options: ExportNativeAudioOptions): Promise<PrepareNativeShareAudioResult>;
   openDownloads(): Promise<void>;
   removeAudio(options: AudioKey): Promise<void>;
   clean(options: CleanOptions): Promise<void>;
