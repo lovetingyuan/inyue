@@ -39,7 +39,7 @@ export function useSongDownload() {
     return track.url;
   }
 
-  async function download(song: Song) {
+  async function download(song: Pick<Song, "id" | "title">) {
     if (downloadingIds.value.has(song.id)) {
       return;
     }

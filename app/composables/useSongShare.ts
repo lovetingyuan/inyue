@@ -7,11 +7,13 @@ import { libraryError, responseStatus } from "~/utils/library-error";
 import { sanitizeSongFilename } from "~/utils/song-download";
 import type { MediaAuthorization, Song } from "~~/shared/types/library";
 
+type ShareableSong = Pick<Song, "id" | "title" | "artist">;
+
 interface UseSongShareOptions {
-  fallbackDownload?: (song: Song) => void | Promise<void>;
+  fallbackDownload?: (song: ShareableSong) => void | Promise<void>;
 }
 
-function formatSongShareText(song: Song) {
+function formatSongShareText(song: ShareableSong) {
   return song.artist ? `${song.title} - ${song.artist}` : song.title;
 }
 
@@ -32,7 +34,7 @@ function supportsWebAudioShare() {
   }
 }
 
-function buildWebShareData(song: Song, file: File) {
+function buildWebShareData(song: ShareableSong, file: File) {
   const summary = formatSongShareText(song);
   const candidates: ShareData[] = [
     { files: [file], title: song.title, text: summary },
@@ -77,7 +79,7 @@ export function useSongShare(options: UseSongShareOptions = {}) {
     return track.url;
   }
 
-  function notifyUnsupportedWebShare(song: Song) {
+  function notifyUnsupportedWebShare(song: ShareableSong) {
     app.showToast("当前浏览器不支持直接分享音频文件", {
       tone: "warning",
       action: options.fallbackDownload
@@ -89,7 +91,7 @@ export function useSongShare(options: UseSongShareOptions = {}) {
     });
   }
 
-  async function resolveWebAudioBlob(song: Song, scope?: string) {
+  async function resolveWebAudioBlob(song: ShareableSong, scope?: string) {
     if (scope) {
       const { readOfflineMedia } = await import("~/utils/offline-media");
       const cached = await readOfflineMedia(scope, "audio", song.id);
@@ -117,7 +119,7 @@ export function useSongShare(options: UseSongShareOptions = {}) {
     return { blob, contentType: contentType || blob.type };
   }
 
-  async function share(song: Song) {
+  async function share(song: ShareableSong) {
     if (sharingId.value) {
       return;
     }

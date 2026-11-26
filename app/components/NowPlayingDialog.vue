@@ -15,9 +15,11 @@ import {
   useTemplateRef,
   watch,
 } from "vue";
-import { ChevronDown, SkipBack, SkipForward, Volume2, VolumeX } from "@lucide/vue";
+import { ChevronDown, Share2, SkipBack, SkipForward, Volume2, VolumeX } from "@lucide/vue";
 import { useTimeoutFn } from "@vueuse/core";
 import { storeToRefs } from "pinia";
+import { useSongDownload } from "~/composables/useSongDownload";
+import { useSongShare } from "~/composables/useSongShare";
 import {
   canStartNowPlayingTransition,
   getNowPlayingTransitionStyle,
@@ -48,6 +50,9 @@ const transitionState = defineModel<NowPlayingTransitionState>("transitionState"
 });
 const player = usePlayerStore();
 const { current: track, position, volume, playing, loading, error } = storeToRefs(player);
+const { download: downloadSong } = useSongDownload();
+const { share: shareSong, sharingId } = useSongShare({ fallbackDownload: downloadSong });
+const sharing = computed(() => Boolean(sharingId.value));
 const dialog = useTemplateRef("dialog");
 const modalBox = useTemplateRef("modalBox");
 const progressBar = useTemplateRef("progressBar");
@@ -258,6 +263,13 @@ onBeforeUnmount(() => {
   }
 });
 
+function shareCurrentTrack() {
+  if (!track.value) {
+    return Promise.resolve();
+  }
+  return shareSong(track.value);
+}
+
 defineExpose({
   open,
   close: () => dialog.value?.close(),
@@ -299,6 +311,19 @@ defineExpose({
         >
           正在播放
         </h2>
+        <AsyncButton
+          v-if="track"
+          class="btn btn-ghost btn-circle min-h-11 min-w-11 justify-self-end"
+          aria-label="分享歌曲"
+          title="分享歌曲"
+          :loading="sharing"
+          :disabled="sharing"
+          :action="shareCurrentTrack"
+        >
+          <template #icon>
+            <Share2 class="size-5 shrink-0" :stroke-width="1.8" aria-hidden="true" />
+          </template>
+        </AsyncButton>
       </header>
       <div
         v-if="contentMounted && track"
