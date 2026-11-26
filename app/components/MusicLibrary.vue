@@ -154,7 +154,7 @@ async function playFirst() {
         </div>
         <div v-if="loading && !songs.length && !retrying" role="status" class="mt-4 lg:pt-6">
           <span class="sr-only">加载歌曲…</span>
-          <div aria-hidden="true">
+          <div aria-hidden="true" class="grid grid-cols-1 gap-1 lg:mt-1">
             <div v-for="row in 6" :key="row" class="flex items-center gap-3 py-2 pr-4 pl-2 lg:pl-3">
               <span class="skeleton hidden h-3 w-6 shrink-0 sm:block" />
               <span class="skeleton size-10 shrink-0 rounded-[18%]" />
@@ -214,7 +214,7 @@ async function playFirst() {
             ><span class="w-[24%]">专辑</span>
             <Clock class="mr-12 size-4 shrink-0" :stroke-width="1.8" aria-hidden="true" />
           </div>
-          <ul class="grid grid-cols-1">
+          <ul class="grid grid-cols-1 gap-1 lg:mt-1">
             <li
               v-for="(song, index) in songs"
               :key="song.id"
