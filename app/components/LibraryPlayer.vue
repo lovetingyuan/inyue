@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useAppStore } from "~/stores/app";
 import AsyncButton from "~/components/AsyncButton.vue";
+import { useCoverQuery } from "~/composables/useLibraryQueries";
 import { usePlayerStore } from "~/stores/player";
 import PlaybackSlider from "~/components/PlaybackSlider.vue";
 import PlaybackQueueDialog from "~/components/PlaybackQueueDialog.vue";
@@ -33,6 +34,17 @@ const app = useAppStore();
 const player = usePlayerStore();
 const { currentRoute } = useRouter();
 const { current: track, queue, volume, playing, loading, mode, error } = storeToRefs(player);
+const currentCover = useCoverQuery(() => (track.value?.coverId ? [track.value.coverId] : []));
+const coverUrl = computed(() => {
+  const currentTrack = track.value;
+  if (!currentTrack) {
+    return undefined;
+  }
+  if (!currentTrack.coverId) {
+    return currentTrack.coverUrl ?? undefined;
+  }
+  return currentCover.urls.value[currentTrack.coverId] ?? currentTrack.coverUrl ?? undefined;
+});
 const shortcutsEnabled = computed(() => !app.native && currentRoute.value.path === "/");
 const { isLoading: refreshingQueue, executeImmediate: refreshQueue } = useAsyncState(
   player.refresh,
@@ -213,7 +225,8 @@ async function cycleMode() {
           @click="nowPlaying?.open()"
         >
           <MusicArtwork
-            :src="track.coverUrl"
+            eager
+            :src="coverUrl"
             class="w-11"
             :style="getNowPlayingTransitionStyle(nowPlayingTransition, 'player', 'cover')"
           />
@@ -359,6 +372,7 @@ async function cycleMode() {
   <NowPlayingDialog
     ref="nowPlaying"
     v-model:transition-state="nowPlayingTransition"
+    :cover-url="coverUrl"
     :shortcuts-enabled="shortcutsEnabled"
     :refreshing-queue="refreshingQueue"
     :playback-mode="playbackMode"

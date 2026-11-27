@@ -45,12 +45,11 @@ export const usePlayerStore = defineStore("player", () => {
     url: string;
   }>();
   const current = computed(() => {
-    if (pendingTrack.value) {
-      return pendingTrack.value;
-    }
-    const track = tracks.value.find((item) => item.id === id.value);
+    const track = pendingTrack.value ?? tracks.value.find((item) => item.id === id.value);
     const artwork = currentArtwork.value;
-    return track && artwork?.trackId === track.id ? { ...track, coverUrl: artwork.url } : track;
+    return track && artwork?.trackId === track.id && artwork.coverId === track.coverId
+      ? { ...track, coverUrl: artwork.url }
+      : track;
   });
   const queue = computed(() => {
     const byId = new Map(tracks.value.map((track) => [track.id, track]));
@@ -241,6 +240,13 @@ export const usePlayerStore = defineStore("player", () => {
     return url.startsWith("file://") || url.startsWith("content://");
   }
 
+  function isUsableCoverUrl(url: string | null | undefined): url is string {
+    if (!url) {
+      return false;
+    }
+    return native ? isNativeLocalUri(url) || mediaUrlIsFresh(url) : mediaUrlIsFresh(url);
+  }
+
   async function cachePlayingTrack(track: Track) {
     const scope = useSessionStore().offlineScope;
     const signal = mediaWrites?.signal;
@@ -268,7 +274,7 @@ export const usePlayerStore = defineStore("player", () => {
           await saveOfflineSongs(scope, [_data]);
         }
       }
-      if (track.coverId && track.coverUrl) {
+      if (track.coverId && track.coverUrl && !isNativeLocalUri(track.coverUrl)) {
         void cacheOfflineMedia(scope, "cover", track.coverId, track.coverUrl, signal, origin);
       }
       await audio;
@@ -302,7 +308,8 @@ export const usePlayerStore = defineStore("player", () => {
       return;
     }
     const cover = track.coverId ? await readOfflineMedia(scope, "cover", track.coverId) : undefined;
-    return { ...track, url, coverUrl: typeof cover === "string" ? cover : track.coverUrl };
+    const fallbackCover = isUsableCoverUrl(track.coverUrl) ? track.coverUrl : null;
+    return { ...track, url, coverUrl: typeof cover === "string" ? cover : fallbackCover };
   }
 
   function promoteNativeCache(trackId: string) {
@@ -386,7 +393,21 @@ export const usePlayerStore = defineStore("player", () => {
         if (status.msgType === eventType.RMXSTATUS_PLAYING) {
           const track = tracks.value.find((item) => item.id === status.trackId);
           if (track && isNativeLocalUri(track.url)) {
-            void nativeCachedTrack(track).catch(() => undefined);
+            const revision = ownerRevision;
+            void nativeCachedTrack(track)
+              .then((cached) => {
+                if (
+                  cached &&
+                  revision === ownerRevision &&
+                  cached.coverUrl &&
+                  cached.coverUrl !== track.coverUrl
+                ) {
+                  tracks.value = tracks.value.map((item) =>
+                    item.id === track.id ? { ...item, coverUrl: cached.coverUrl } : item,
+                  );
+                }
+              })
+              .catch(() => undefined);
           } else if (track) {
             void cachePlayingTrack(track).catch(() => undefined);
           }
@@ -525,6 +546,39 @@ export const usePlayerStore = defineStore("player", () => {
           playbackError();
           return;
         }
+        const coverId = source.coverId;
+        if (coverId && !isNativeLocalUri(source.coverUrl ?? "")) {
+          const scope = useSessionStore().offlineScope;
+          if (scope) {
+            const { readOfflineMedia } = await import("~/utils/offline-media");
+            const localCover = await readOfflineMedia(scope, "cover", coverId);
+            if (revision !== ownerRevision || signal?.aborted || owner !== requestedOwner) {
+              return;
+            }
+            if (typeof localCover === "string") {
+              source = { ...source, coverUrl: localCover };
+            }
+          }
+          if (!isUsableCoverUrl(source.coverUrl) && !app.offline) {
+            const covers = await authorizeCovers([coverId], signal).catch(
+              (): Record<string, string> => ({}),
+            );
+            if (revision !== ownerRevision || signal?.aborted || owner !== requestedOwner) {
+              return;
+            }
+            const remoteCover = covers[coverId];
+            if (remoteCover) {
+              source = { ...source, coverUrl: remoteCover };
+              if (scope) {
+                const writeSignal = mediaWrites?.signal;
+                const origin = apiOrigin();
+                void import("~/utils/offline-media").then(({ cacheOfflineMedia }) =>
+                  cacheOfflineMedia(scope, "cover", coverId, remoteCover, writeSignal, origin),
+                );
+              }
+            }
+          }
+        }
         const playable = source;
         if (playable !== track) {
           tracks.value = tracks.value.map((item) => (item.id === track.id ? playable : item));
@@ -554,25 +608,35 @@ export const usePlayerStore = defineStore("player", () => {
     } else {
       const revision = ownerRevision;
       const scope = useSessionStore().offlineScope;
-      if (scope && track.coverId) {
-        const cachedUrl = retainCoverObjectUrl(scope, track.coverId);
+      let currentTrack = track;
+      if (
+        scope &&
+        currentTrack.coverId &&
+        !(
+          currentArtwork.value?.trackId === currentTrack.id &&
+          currentArtwork.value.scope === scope &&
+          currentArtwork.value.coverId === currentTrack.coverId
+        )
+      ) {
+        const cachedUrl = retainCoverObjectUrl(scope, currentTrack.coverId);
         if (cachedUrl) {
           replaceArtwork({
-            trackId: track.id,
+            trackId: currentTrack.id,
             scope,
-            coverId: track.coverId,
+            coverId: currentTrack.coverId,
             url: cachedUrl,
           });
         }
       }
       const media = scope ? await import("~/utils/offline-media") : undefined;
-      const local = scope && (await media?.readOfflineMedia(scope, "audio", track.id));
-      let source = local ? "" : track.url;
+      const local = scope && (await media?.readOfflineMedia(scope, "audio", currentTrack.id));
+      let source = local ? "" : currentTrack.url;
       if (!local && !app.offline && !mediaUrlIsFresh(source)) {
-        const [remote] = await authorize([track.id]);
+        const [remote] = await authorize([currentTrack.id]);
         source = remote?.url ?? "";
         if (remote) {
-          tracks.value = tracks.value.map((item) => (item.id === track.id ? remote : item));
+          currentTrack = remote;
+          tracks.value = tracks.value.map((item) => (item.id === currentTrack.id ? remote : item));
         }
       }
       if (revision !== ownerRevision || signal?.aborted) {
@@ -603,36 +667,74 @@ export const usePlayerStore = defineStore("player", () => {
         playWeb(output);
       }
       const hasCurrentArtwork =
-        currentArtwork.value?.trackId === track.id &&
+        currentArtwork.value?.trackId === currentTrack.id &&
         currentArtwork.value.scope === scope &&
-        currentArtwork.value.coverId === track.coverId;
+        currentArtwork.value.coverId === currentTrack.coverId;
       if (!hasCurrentArtwork) {
         let nextArtwork:
           | { trackId: string; scope: string; coverId: string; url: string }
           | undefined;
-        if (scope && media && track.coverId) {
-          let url = retainCoverObjectUrl(scope, track.coverId);
+        if (scope && media && currentTrack.coverId) {
+          let url = retainCoverObjectUrl(scope, currentTrack.coverId);
           if (!url) {
-            const cover = await media.readOfflineMedia(scope, "cover", track.coverId);
+            const cover = await media.readOfflineMedia(scope, "cover", currentTrack.coverId);
             if (revision !== ownerRevision || signal?.aborted) {
               return;
             }
             if (cover instanceof Blob) {
-              url = retainCoverObjectUrl(scope, track.coverId, cover);
+              url = retainCoverObjectUrl(scope, currentTrack.coverId, cover);
             }
           }
           if (url) {
-            nextArtwork = { trackId: track.id, scope, coverId: track.coverId, url };
+            nextArtwork = {
+              trackId: currentTrack.id,
+              scope,
+              coverId: currentTrack.coverId,
+              url,
+            };
           }
         }
         replaceArtwork(nextArtwork);
+        if (
+          !nextArtwork &&
+          currentTrack.coverId &&
+          !isUsableCoverUrl(currentTrack.coverUrl) &&
+          !app.offline
+        ) {
+          const coverId = currentTrack.coverId;
+          const covers = await authorizeCovers([coverId], signal).catch(
+            (): Record<string, string> => ({}),
+          );
+          if (revision !== ownerRevision || signal?.aborted) {
+            return;
+          }
+          const remoteCover = covers[coverId];
+          if (remoteCover) {
+            currentTrack = { ...currentTrack, coverUrl: remoteCover };
+            tracks.value = tracks.value.map((item) =>
+              item.id === currentTrack.id ? currentTrack : item,
+            );
+            if (scope && media) {
+              void media.cacheOfflineMedia(
+                scope,
+                "cover",
+                coverId,
+                remoteCover,
+                mediaWrites?.signal,
+                apiOrigin(),
+              );
+            }
+          }
+        }
       }
       if ("mediaSession" in navigator) {
-        const artwork = currentArtwork.value?.url ?? track.coverUrl;
+        const artwork =
+          currentArtwork.value?.url ??
+          (isUsableCoverUrl(currentTrack.coverUrl) ? currentTrack.coverUrl : null);
         navigator.mediaSession.metadata = new MediaMetadata({
-          title: track.title,
-          artist: track.artist,
-          album: track.album ?? "",
+          title: currentTrack.title,
+          artist: currentTrack.artist,
+          album: currentTrack.album ?? "",
           artwork: artwork ? [{ src: artwork }] : [],
         });
       }
@@ -689,6 +791,24 @@ export const usePlayerStore = defineStore("player", () => {
     }
   }
 
+  async function authorizeCovers(list: string[], signal?: AbortSignal) {
+    const unique = [...new Set(list)];
+    const covers: Record<string, string> = {};
+    for (let index = 0; index < unique.length; index += 80) {
+      if (signal?.aborted || app.offline) {
+        break;
+      }
+      const { _data } = await request<MediaAuthorization>("/api/media/authorize", {
+        method: "POST",
+        body: { coverIds: unique.slice(index, index + 80) },
+        signal,
+        timeout: 5000,
+      });
+      Object.assign(covers, _data?.covers);
+    }
+    return covers;
+  }
+
   async function setQueue(
     list: string[],
     selected: string,
@@ -721,14 +841,17 @@ export const usePlayerStore = defineStore("player", () => {
         byId.set(song.id, {
           ...song,
           lyrics: song.lyrics ?? null,
-          coverUrl: previous?.coverId === song.coverId ? (previous.coverUrl ?? null) : null,
+          coverUrl:
+            previous?.coverId === song.coverId && isUsableCoverUrl(previous.coverUrl)
+              ? previous.coverUrl
+              : null,
         });
       }
       const pending = pendingTrack.value;
       if (pending) {
         byId.set(pending.id, {
           ...pending,
-          coverUrl: pending.coverUrl?.startsWith("blob:") ? null : pending.coverUrl,
+          coverUrl: isUsableCoverUrl(pending.coverUrl) ? pending.coverUrl : null,
         });
       }
       for (const trackId of list) {
@@ -751,6 +874,48 @@ export const usePlayerStore = defineStore("player", () => {
         }
         if (track) {
           cached.set(trackId, { ...track, url });
+        }
+      }
+      if (native && cached.size) {
+        const cachedCoverIds = [
+          ...new Set(
+            [...cached.values()].flatMap(({ coverId, coverUrl }) =>
+              coverId && !isNativeLocalUri(coverUrl ?? "") ? [coverId] : [],
+            ),
+          ),
+        ];
+        if (cachedCoverIds.length) {
+          const cachedCovers = await media.readOfflineCovers(scope, cachedCoverIds);
+          if (generation !== ownerRevision || controller?.signal.aborted) {
+            return;
+          }
+          for (const [trackId, track] of cached) {
+            const localCover = track.coverId ? cachedCovers[track.coverId] : undefined;
+            if (typeof localCover === "string") {
+              cached.set(trackId, { ...track, coverUrl: localCover });
+            }
+          }
+        }
+        const uncachedCoverIds = [
+          ...new Set(
+            [...cached.values()].flatMap(({ coverId, coverUrl }) =>
+              coverId && !isUsableCoverUrl(coverUrl) ? [coverId] : [],
+            ),
+          ),
+        ];
+        if (!app.offline && uncachedCoverIds.length) {
+          const remoteCovers = await authorizeCovers(uncachedCoverIds, controller?.signal).catch(
+            (): Record<string, string> => ({}),
+          );
+          if (generation !== ownerRevision || controller?.signal.aborted) {
+            return;
+          }
+          for (const [trackId, track] of cached) {
+            const remoteCover = track.coverId ? remoteCovers[track.coverId] : undefined;
+            if (remoteCover) {
+              cached.set(trackId, { ...track, coverUrl: remoteCover });
+            }
+          }
         }
       }
     }
@@ -1169,7 +1334,17 @@ export const usePlayerStore = defineStore("player", () => {
     const controller = new AbortController();
     const { signal } = controller;
     selection = controller;
-    pendingTrack.value = track;
+    const scope = useSessionStore().offlineScope;
+    let pendingCoverUrl = isUsableCoverUrl(track.coverUrl) ? track.coverUrl : null;
+    if (track.coverUrl?.startsWith("blob:")) {
+      const retained =
+        !native && scope && track.coverId ? retainCoverObjectUrl(scope, track.coverId) : undefined;
+      if (retained && scope && track.coverId) {
+        replaceArtwork({ trackId: track.id, scope, coverId: track.coverId, url: retained });
+      }
+      pendingCoverUrl = null;
+    }
+    pendingTrack.value = { ...track, coverUrl: pendingCoverUrl };
     error.value = "";
     webPlayback = undefined;
     audio?.pause();
@@ -1193,6 +1368,9 @@ export const usePlayerStore = defineStore("player", () => {
       if (selection === controller) {
         selection = undefined;
         pendingTrack.value = undefined;
+        if (currentArtwork.value && currentArtwork.value.trackId !== id.value) {
+          replaceArtwork();
+        }
       }
     }
   }
@@ -1227,11 +1405,19 @@ export const usePlayerStore = defineStore("player", () => {
               album: song.album,
               year: song.year,
               lyrics: song.lyrics,
+              coverId: song.coverId,
+              coverUrl: track.coverId === song.coverId ? track.coverUrl : null,
             }
           : track;
       tracks.value = tracks.value.map(apply);
       if (pendingTrack.value?.id === song.id) {
         pendingTrack.value = apply(pendingTrack.value);
+      }
+      if (
+        currentArtwork.value?.trackId === song.id &&
+        currentArtwork.value.coverId !== song.coverId
+      ) {
+        replaceArtwork();
       }
     },
     setMode: (value: PlaybackMode) => run(() => setMode(value)),

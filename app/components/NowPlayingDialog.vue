@@ -32,6 +32,7 @@ import { parseLrc } from "~~/shared/lrc";
 defineOptions({ name: "NowPlayingDialog" });
 const MusicLyrics = defineAsyncComponent(() => import("~/components/MusicLyrics.vue"));
 defineProps<{
+  coverUrl?: string;
   shortcutsEnabled: boolean;
   refreshingQueue: boolean;
   playbackMode: { label: string; icon: Component };
@@ -375,7 +376,7 @@ defineExpose({
                       <MusicArtwork
                         data-now-playing-cover
                         eager
-                        :src="track.coverUrl"
+                        :src="coverUrl"
                         :style="getNowPlayingTransitionStyle(transitionState, 'dialog', 'cover')"
                         class="w-full rounded-[1.5rem]! shadow-xl shadow-base-content/15 ring-1 ring-base-content/8"
                       />

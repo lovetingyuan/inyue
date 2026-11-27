@@ -9,7 +9,7 @@ interface __BaseEnv_Env {
   NUXT_PUBLIC_SENTRY_WEB_DSN?: "https://62a2915657896081586f17f092feb2e6@o4512391155154944.ingest.us.sentry.io/4512468747943936";
   NUXT_SENTRY_SERVER_DSN?: "https://7f610cfeb1a41f3c6c6cf11dda61967b@o4512391155154944.ingest.us.sentry.io/4512468747878400";
   NUXT_PUBLIC_GOOGLE_CLIENT_ID?: "262526689924-vhp43um1207tumj0m0k0uuh6k3s9iami.apps.googleusercontent.com";
-  NUXT_MAIL_FROM?: "inYue <noreply@inyue.tingyuan.nz>";
+  NUXT_MAIL_FROM?: "inYue <inyue@tingyuan.nz>";
   NUXT_BETTER_AUTH_SECRET?: string;
   NUXT_MEDIA_SIGNING_SECRET?: string;
   NUXT_RESEND_API_KEY?: string;
@@ -24,7 +24,7 @@ declare namespace Cloudflare {
     NUXT_PUBLIC_SENTRY_WEB_DSN: "https://62a2915657896081586f17f092feb2e6@o4512391155154944.ingest.us.sentry.io/4512468747943936";
     NUXT_SENTRY_SERVER_DSN: "https://7f610cfeb1a41f3c6c6cf11dda61967b@o4512391155154944.ingest.us.sentry.io/4512468747878400";
     NUXT_PUBLIC_GOOGLE_CLIENT_ID: "262526689924-vhp43um1207tumj0m0k0uuh6k3s9iami.apps.googleusercontent.com";
-    NUXT_MAIL_FROM: "inYue <noreply@inyue.tingyuan.nz>";
+    NUXT_MAIL_FROM: "inYue <inyue@tingyuan.nz>";
     NUXT_BETTER_AUTH_SECRET: string;
     NUXT_MEDIA_SIGNING_SECRET: string;
     NUXT_RESEND_API_KEY: string;
