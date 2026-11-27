@@ -65,8 +65,7 @@ export function useMusicApi() {
     const method = options?.method?.toUpperCase() ?? "GET";
     const isHealthProbe = path === "/api/health";
     const publicRequest =
-      (method === "GET" || method === "HEAD") &&
-      (path === "/api/auth-providers" || isHealthProbe);
+      (method === "GET" || method === "HEAD") && (path === "/api/auth-providers" || isHealthProbe);
     const library = /^\/api\/(songs|playlists|integration)(\/|$)/.test(path);
     const authorize = path === "/api/media/authorize";
     const hasOwner =
@@ -101,8 +100,7 @@ export function useMusicApi() {
     try {
       const response = await globalThis.$fetch.raw<T>(path, {
         retry: 0,
-        timeout:
-          method === "GET" ? (localEvent ? 5000 : native ? 10_000 : undefined) : undefined,
+        timeout: method === "GET" ? (localEvent ? 5000 : native ? 10_000 : undefined) : undefined,
         ...options,
         ...(localEvent ? { context: localEvent.context } : {}),
         headers,

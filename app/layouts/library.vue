@@ -162,11 +162,7 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
       >
         <div
           class="flex min-w-0 flex-1 items-center gap-2 transition-opacity duration-150"
-          :class="
-            mobileSearchExpanded
-              ? 'pointer-events-none opacity-0'
-              : 'opacity-100 delay-75'
-          "
+          :class="mobileSearchExpanded ? 'pointer-events-none opacity-0' : 'opacity-100 delay-75'"
           :inert="mobileSearchExpanded"
           :aria-hidden="mobileSearchExpanded || undefined"
         >
@@ -216,11 +212,7 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
           :aria-hidden="!mobileSearchExpanded || undefined"
           @focusout="handleMobileSearchFocusOut"
         >
-          <LibrarySearchInput
-            ref="mobileSearchInput"
-            closable
-            @close="closeMobileSearch(true)"
-          />
+          <LibrarySearchInput ref="mobileSearchInput" closable @close="closeMobileSearch(true)" />
         </div>
       </header>
       <main class="flex min-h-0 flex-1 flex-col">

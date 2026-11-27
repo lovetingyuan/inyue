@@ -167,8 +167,7 @@ export function useSongShare(options: UseSongShareOptions = {}) {
       if (!resolved) {
         return;
       }
-      const mimeType =
-        resolved.contentType?.split(";", 1)[0]?.trim().toLowerCase() || "audio/mpeg";
+      const mimeType = resolved.contentType?.split(";", 1)[0]?.trim().toLowerCase() || "audio/mpeg";
       const fileName = sanitizeSongFilename(song.title, mimeType);
       const file = new File([resolved.blob], fileName, { type: mimeType });
       const shareData = buildWebShareData(song, file);

@@ -71,9 +71,8 @@ defineExpose({ resetPreview, displayedPosition, scrubbing });
     <span
       :class="{ 'row-start-2 justify-self-start': layout === 'stacked' }"
       :style="transitionStyle('elapsed')"
-    >{{
-      formatMusicTime(displayedPosition)
-    }}</span>
+      >{{ formatMusicTime(displayedPosition) }}</span
+    >
     <PlaybackSlider
       :key="track?.id"
       data-playback-seek

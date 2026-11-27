@@ -22,8 +22,9 @@ import {
   VolumeX,
 } from "@lucide/vue";
 import { useAsyncState, useEventListener, useTimeoutFn } from "@vueuse/core";
-import { useRouter } from "#app";
+import { useHead, useRouter } from "#app";
 import { storeToRefs } from "pinia";
+import { appName } from "~~/shared/app-brand";
 import { getNowPlayingTransitionStyle } from "~/utils/now-playing-transition";
 import type { NowPlayingTransitionState } from "~/types/now-playing-transition";
 import type { PlaybackMode } from "~~/shared/types/library";
@@ -34,6 +35,15 @@ const app = useAppStore();
 const player = usePlayerStore();
 const { currentRoute } = useRouter();
 const { current: track, queue, volume, playing, loading, mode, error } = storeToRefs(player);
+useHead(
+  {
+    title: () => {
+      const title = playing.value ? track.value?.title.trim() : "";
+      return title ? `${title} · ${appName}` : undefined;
+    },
+  },
+  { tagPriority: "high" },
+);
 const currentCover = useCoverQuery(() => (track.value?.coverId ? [track.value.coverId] : []));
 const coverUrl = computed(() => {
   const currentTrack = track.value;
