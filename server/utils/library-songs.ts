@@ -4,7 +4,7 @@ import { songs } from "../database/library-schema";
 import { libraryDatabase } from "./library";
 import { formText, uploadForm } from "./library-upload";
 
-const { ownerId: _ownerId, audioId: _audioId, ...fields } = getTableColumns(songs);
+const { ownerId: _ownerId, ...fields } = getTableColumns(songs);
 export { fields as songFields };
 
 export function songMetadata(form: Awaited<ReturnType<typeof uploadForm>>) {

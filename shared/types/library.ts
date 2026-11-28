@@ -9,6 +9,7 @@ export interface Song {
   description: string | null;
   lyrics: string | null;
   duration: number | null;
+  audioId?: string;
   coverId: string | null;
   createdAt: number;
 }
@@ -50,14 +51,10 @@ export interface Track {
   year: number | null;
   lyrics: string | null;
   duration: number | null;
+  audioId?: string;
   url: string;
   coverId: string | null;
   coverUrl: string | null;
-}
-
-export interface MediaAuthorization {
-  tracks: Track[];
-  covers: Record<string, string>;
 }
 
 export type PlaybackMode = "sequential" | "loop" | "single" | "shuffle";

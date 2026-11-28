@@ -443,7 +443,7 @@ export function cacheOfflineMedia(
     for (let attempt = 0; attempt < 2; attempt++) {
       const response = await fetch(source, {
         cache: "no-store",
-        credentials: "omit",
+        credentials: "same-origin",
         redirect: "error",
         signal,
       });

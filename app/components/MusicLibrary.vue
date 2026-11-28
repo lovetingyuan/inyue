@@ -15,7 +15,8 @@ import PlayingBars from "~/components/PlayingBars.vue";
 import MusicArtwork from "~/components/MusicArtwork.vue";
 import LibraryPlayer from "~/components/LibraryPlayer.vue";
 import LibrarySearchInput from "~/components/LibrarySearchInput.vue";
-import { computed, onScopeDispose, useTemplateRef, watchEffect } from "vue";
+import PullToRefresh from "~/components/PullToRefresh.vue";
+import { computed, onScopeDispose, ref, useTemplateRef, watch, watchEffect } from "vue";
 import { useAsyncState } from "@vueuse/core";
 import { useRouter } from "#app";
 import { CircleAlert, Clock, FileCheck, Music, Play, Search } from "@lucide/vue";
@@ -28,8 +29,9 @@ import SongManagementDialog from "~/components/SongManagementDialog.vue";
 
 const library = useLibraryStore();
 const app = useAppStore();
+const player = usePlayerStore();
 const { playlist, term } = storeToRefs(library);
-const { current, playing, loading: playbackLoading } = storeToRefs(usePlayerStore());
+const { current, playing, loading: playbackLoading } = storeToRefs(player);
 const router = useRouter();
 const showLibrary = computed(() => router.currentRoute.value.path === "/");
 const { songs: songQuery, play: playFromLibrary } = useLibraryQueries();
@@ -57,6 +59,8 @@ const error = computed(() => {
   return cause ? libraryError(cause) : "";
 });
 const songManagement = useTemplateRef("songManagement");
+const pullToRefresh = useTemplateRef("pullToRefresh");
+const refreshing = ref(false);
 const { download: downloadSong, isDownloading } = useSongDownload();
 const { share: shareSong, isSharing } = useSongShare({ fallbackDownload: downloadSong });
 const title = computed(() =>
@@ -71,16 +75,45 @@ const playlistCoverUrl = computed(() => {
   return id && !term.value ? coverUrls.value[id] : undefined;
 });
 
+async function reloadLibrary() {
+  const [songsResult] = await Promise.all([songQuery.refetch(), retryPlaylists()]);
+  if (!songsResult.error) {
+    player.invalidateQueue();
+  }
+  await Promise.all([
+    songCovers.error.value && songCovers.refetch(),
+    playlistCovers.error.value && playlistCovers.refetch(),
+  ]);
+}
+
 const { isLoading: retrying, executeImmediate: retryLibrary } = useAsyncState(
-  async () => {
-    await Promise.all([songQuery.refetch(), retryPlaylists()]);
-    await Promise.all([
-      songCovers.error.value && songCovers.refetch(),
-      playlistCovers.error.value && playlistCovers.refetch(),
-    ]);
-  },
+  reloadLibrary,
   undefined,
   { immediate: false },
+);
+const pullRefreshDisabled = computed(
+  () =>
+    !showLibrary.value ||
+    app.drawerOpen ||
+    retrying.value ||
+    (loading.value && !songs.value.length && !refreshing.value),
+);
+
+watch([playlist, term, () => app.offline], () => {
+  pullToRefresh.value?.reset();
+});
+watch(showLibrary, (visible) => {
+  if (!visible) {
+    pullToRefresh.value?.reset();
+  }
+});
+watch(
+  () => app.drawerOpen,
+  (open) => {
+    if (open) {
+      pullToRefresh.value?.reset();
+    }
+  },
 );
 watchEffect(() => {
   library.searching = Boolean(term.value) && loading.value;
@@ -111,8 +144,13 @@ async function playFirst() {
       <div class="hidden items-center gap-3 px-6 pt-4 pb-3 md:flex">
         <LibrarySearchInput />
       </div>
-      <div
-        class="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 pt-1 pb-5 sm:px-6 md:pt-0"
+      <PullToRefresh
+        ref="pullToRefresh"
+        v-model:refreshing="refreshing"
+        :refresh="reloadLibrary"
+        :disabled="pullRefreshDisabled"
+        content-class="px-4 pt-1 pb-5 sm:px-6 md:pt-0"
+        announcement-label="正在刷新歌曲列表"
       >
         <div
           class="flex shrink-0 items-center gap-3 rounded-box bg-linear-to-br from-primary/17 to-base-200/55 p-2 sm:gap-4 sm:p-3"
@@ -152,7 +190,11 @@ async function playFirst() {
             </template>
           </AsyncButton>
         </div>
-        <div v-if="loading && !songs.length && !retrying" role="status" class="mt-4 lg:pt-6">
+        <div
+          v-if="loading && !songs.length && !retrying && !refreshing"
+          role="status"
+          class="mt-4 lg:pt-6"
+        >
           <span class="sr-only">加载歌曲…</span>
           <div aria-hidden="true" class="grid grid-cols-1 gap-1 lg:mt-1">
             <div v-for="row in 6" :key="row" class="flex items-center gap-3 py-2 pr-4 pl-2 lg:pl-3">
@@ -325,7 +367,7 @@ async function playFirst() {
             加载更多
           </AsyncButton>
         </div>
-      </div>
+      </PullToRefresh>
     </section>
     <slot />
     <LibraryPlayer />

@@ -5,9 +5,9 @@ import { useSessionStore } from "~/stores/session";
 import { useMusicApi } from "~/composables/useMusicApi";
 import { libraryError, responseStatus } from "~/utils/library-error";
 import { sanitizeSongFilename } from "~/utils/song-download";
-import type { MediaAuthorization, Song } from "~~/shared/types/library";
+import type { Song, SongDetails } from "~~/shared/types/library";
 
-type ShareableSong = Pick<Song, "id" | "title" | "artist">;
+type ShareableSong = Pick<Song, "id" | "title" | "artist" | "audioId">;
 
 interface UseSongShareOptions {
   fallbackDownload?: (song: ShareableSong) => void | Promise<void>;
@@ -60,23 +60,24 @@ function isShareCanceled(cause: unknown, native: boolean) {
 export function useSongShare(options: UseSongShareOptions = {}) {
   const app = useAppStore();
   const session = useSessionStore();
-  const { apiOrigin, request } = useMusicApi();
+  const { apiOrigin, mediaUrl, request } = useMusicApi();
   const sharingId = ref<string | null>(null);
 
   function isSharing(id: string) {
     return sharingId.value === id;
   }
 
-  async function authorizeAudioUrl(songId: string) {
-    const { _data } = await request<MediaAuthorization>("/api/media/authorize", {
-      method: "POST",
-      body: { songIds: [songId] },
-    });
-    const track = _data?.tracks.find(({ id }) => id === songId);
-    if (!track?.url) {
+  async function resolveAudioUrl(song: ShareableSong) {
+    let audioId = song.audioId;
+    if (!audioId) {
+      const { _data } = await request<SongDetails>(`/api/songs/${song.id}`);
+      audioId = _data?.audioId;
+    }
+    const url = audioId ? mediaUrl(audioId) : "";
+    if (!url) {
       throw new Error("找不到歌曲音频文件。");
     }
-    return track.url;
+    return url;
   }
 
   function notifyUnsupportedWebShare(song: ShareableSong) {
@@ -105,10 +106,10 @@ export function useSongShare(options: UseSongShareOptions = {}) {
       return undefined;
     }
 
-    const url = await authorizeAudioUrl(song.id);
+    const url = await resolveAudioUrl(song);
     const response = await fetch(url, {
       cache: "no-store",
-      credentials: "omit",
+      credentials: "same-origin",
       redirect: "error",
     });
     if (!response.ok) {
@@ -142,7 +143,7 @@ export function useSongShare(options: UseSongShareOptions = {}) {
             app.showToast("歌曲尚未缓存，无法离线分享", { tone: "warning" });
             return;
           }
-          url = await authorizeAudioUrl(song.id);
+          url = await resolveAudioUrl(song);
           origin = apiOrigin() || location.origin;
         }
         const fileName = sanitizeSongFilename(song.title, "audio/mpeg");

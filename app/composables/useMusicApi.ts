@@ -67,14 +67,11 @@ export function useMusicApi() {
     const publicRequest =
       (method === "GET" || method === "HEAD") && (path === "/api/auth-providers" || isHealthProbe);
     const library = /^\/api\/(songs|playlists|integration)(\/|$)/.test(path);
-    const authorize = path === "/api/media/authorize";
     const hasOwner =
-      authorize ||
       (method === "GET" && /^\/api\/(songs|playlists)(\/|$)/.test(path)) ||
-      (method === "POST" && path === "/api/songs") ||
+      (method === "POST" && (path === "/api/songs" || path === "/api/songs/lookup")) ||
       (method === "PATCH" && path.startsWith("/api/songs/"));
-    const session =
-      import.meta.client && (library || authorize) ? useSessionStore(pinia) : undefined;
+    const session = import.meta.client && library ? useSessionStore(pinia) : undefined;
     const userId = session?.userId;
     const generation = session?.generation;
     const write = method !== "GET" && method !== "HEAD";
@@ -184,5 +181,24 @@ export function useMusicApi() {
     }
   }
 
-  return { apiOrigin, native, request, signIn, signOut };
+  function mediaUrl(fileId: string) {
+    if (!fileId) {
+      return "";
+    }
+    if (!native) {
+      return import.meta.client
+        ? new URL(`/api/media/${fileId}`, location.origin).href
+        : `/api/media/${fileId}`;
+    }
+    const session = useSessionStore(pinia);
+    session.ensureFreshMediaAuth();
+    const query = session.mediaAuth;
+    if (!query || (session.mediaAuthExpires && session.mediaAuthExpires <= Date.now() + 30_000)) {
+      return "";
+    }
+    const origin = apiOrigin() || location.origin;
+    return `${origin}/api/media/${fileId}?${query}`;
+  }
+
+  return { apiOrigin, mediaUrl, native, request, signIn, signOut };
 }

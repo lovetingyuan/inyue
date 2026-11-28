@@ -6,7 +6,7 @@ import { computed, ref, shallowRef, watch } from "vue";
 import { useRouter } from "#app";
 import { useQuery, useQueryCache } from "@pinia/colada";
 import { defineStore } from "pinia";
-import { offlineExpiryHeader } from "~~/shared/offline-library";
+import { mediaAuthHeader, offlineExpiryHeader } from "~~/shared/offline-library";
 import type { Account, AccountProfile } from "~~/shared/types/library";
 import type { OfflineState } from "~/types/offline-library";
 import { responseStatus } from "~/utils/library-error";
@@ -24,9 +24,30 @@ export const useSessionStore = defineStore("session", () => {
   const loginFeedback = shallowRef<{ notice: string; email?: string }>();
   const offlineState = shallowRef<OfflineState>();
   const offlineReady = ref(false);
+  const mediaAuth = ref("");
+  const mediaAuthExpires = ref(0);
   let connectionRevision = 0;
   let reconnect: Promise<void> | undefined;
   let revokedScope: string | undefined;
+
+  function clearMediaAuth() {
+    mediaAuth.value = "";
+    mediaAuthExpires.value = 0;
+  }
+
+  function updateMediaAuth(raw: string | null) {
+    if (!raw) {
+      if (!native) {
+        clearMediaAuth();
+      }
+      return;
+    }
+    const expires = Number(new URLSearchParams(raw).get("expires"));
+    if (Number.isFinite(expires) && expires > Date.now()) {
+      mediaAuth.value = raw;
+      mediaAuthExpires.value = expires;
+    }
+  }
 
   const accountQuery = useQuery({
     key: accountQueryKey,
@@ -54,6 +75,11 @@ export const useSessionStore = defineStore("session", () => {
         const account = response._data ?? null;
         const expiresAt = Number(response.headers.get(offlineExpiryHeader));
         signal.throwIfAborted();
+        if (account) {
+          updateMediaAuth(response.headers.get(mediaAuthHeader));
+        } else {
+          clearMediaAuth();
+        }
         if (offline && account) {
           const profile = native || expiresAt > Date.now() ? { account, expiresAt } : undefined;
           const verified = await offline.storage
@@ -78,6 +104,7 @@ export const useSessionStore = defineStore("session", () => {
         signal.throwIfAborted();
         const status = responseStatus(cause);
         if (status === 401 || status === 403) {
+          clearMediaAuth();
           revokedScope = offline?.state?.revision;
           offlineState.value = undefined;
           await offline?.storage
@@ -216,6 +243,7 @@ export const useSessionStore = defineStore("session", () => {
     if (id !== userId.value || revision !== generation.value || signingOut.value) {
       return;
     }
+    clearMediaAuth();
     const scope = offlineScope.value;
     cache.cancelQueries({ key: accountQueryKey });
     cache.setQueryData(accountQueryKey, null);
@@ -272,6 +300,7 @@ export const useSessionStore = defineStore("session", () => {
       return;
     }
     revokedScope = offlineState.value?.revision;
+    clearMediaAuth();
     connectionRevision++;
     reconnect = undefined;
     cache.cancelQueries({ key: accountQueryKey });
@@ -307,6 +336,7 @@ export const useSessionStore = defineStore("session", () => {
           /* Storage may be unavailable. */
         }
       }
+      clearMediaAuth();
       cache.setQueryData(accountQueryKey, null);
       await Promise.allSettled([releaseLibrary, releaseIntegration, clearOfflineAccount(scope)]);
       await router.replace("/login");
@@ -317,13 +347,31 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
+  function ensureFreshMediaAuth() {
+    if (
+      !native ||
+      app.offline ||
+      signingOut.value ||
+      accountQuery.isLoading.value ||
+      !userId.value
+    ) {
+      return;
+    }
+    if (!mediaAuth.value || mediaAuthExpires.value <= Date.now() + 60 * 60 * 1000) {
+      void accountQuery.refetch();
+    }
+  }
+
   return {
     account,
     accountError,
+    ensureFreshMediaAuth,
     generation,
     loginFeedback,
     logout,
     logoutError,
+    mediaAuth,
+    mediaAuthExpires,
     mounted,
     offlineScope,
     ready,

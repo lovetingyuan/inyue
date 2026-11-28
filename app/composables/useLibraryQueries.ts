@@ -7,13 +7,7 @@ import { computed, onScopeDispose, shallowRef, watch, watchEffect, type Ref } fr
 import { useDebounceFn, useEventBus } from "@vueuse/core";
 import { useNuxtApp } from "#app";
 import { useInfiniteQuery, useQuery, useQueryCache, useQueryState } from "@pinia/colada";
-import type {
-  MediaAuthorization,
-  Playlist,
-  Song,
-  SongDetails,
-  SongPage,
-} from "~~/shared/types/library";
+import type { Playlist, Song, SongDetails, SongPage } from "~~/shared/types/library";
 import { releaseCoverObjectUrl, retainCoverObjectUrl } from "~/utils/cover-object-urls";
 import { responseStatus } from "~/utils/library-error";
 import { libraryKeys, offlineAudioChanged } from "~/utils/music-query-keys";
@@ -119,6 +113,9 @@ export function useLibraryQueries() {
   function play(song: Song, coverUrl: string | null) {
     const { filters } = library;
     const scope = session.offlineScope;
+    const loaded = songs.data.value?.pages.flatMap(({ items }) => items) ?? [];
+    const hasMore = Boolean(songs.hasNextPage.value);
+    const seedSongs = loaded.some((item) => item.id === song.id) ? loaded : [song];
     const queueKey = JSON.stringify([
       "songs",
       app.offline ? "offline" : "online",
@@ -132,14 +129,22 @@ export function useLibraryQueries() {
           const { readOfflineSongs } = await import("~/utils/offline-library");
           return (await readOfflineSongs(scope, filters)).map(({ id }) => id);
         }
+        if (!hasMore && loaded.some((item) => item.id === song.id)) {
+          return loaded.map(({ id }) => id);
+        }
         const { _data } = await request<{ ids: string[] }>("/api/songs", {
           query: { ...filters, ids: true },
-          retry: 1,
+          retry: 0,
+          timeout: 5000,
           signal,
         });
         return _data?.ids ?? [];
       },
-      { queueKey },
+      {
+        queueKey,
+        seedSongs,
+        needsFullQueue: !app.offline && hasMore,
+      },
     );
   }
 
@@ -265,8 +270,10 @@ function coverIds(ids: readonly string[]) {
   return [...new Set(ids)].sort();
 }
 
-function coverKey(userId: string, ids: string[]) {
-  return [...libraryKeys.user(userId), "covers", ids] as const;
+function coverKey(userId: string, ids: string[], mediaAuthState: string) {
+  return mediaAuthState
+    ? ([...libraryKeys.user(userId), "covers", ids, mediaAuthState] as const)
+    : ([...libraryKeys.user(userId), "covers", ids] as const);
 }
 
 function useCoverUrls(
@@ -329,7 +336,14 @@ function useCoverState(ids: () => readonly string[]) {
   const session = useSessionStore();
   const app = useAppStore();
   const { data } = useQueryState<Record<string, Blob | string>>(() =>
-    connectionKey(coverKey(session.userId, coverIds(ids())), app.offline),
+    connectionKey(
+      coverKey(
+        session.userId,
+        coverIds(ids()),
+        app.native && !app.offline ? (session.mediaAuth ? "authed" : "pending") : "",
+      ),
+      app.offline,
+    ),
   );
   return useCoverUrls(data, () => session.offlineScope);
 }
@@ -337,17 +351,15 @@ function useCoverState(ids: () => readonly string[]) {
 export function useCoverQuery(ids: () => readonly string[]) {
   const session = useSessionStore();
   const app = useAppStore();
-  const { apiOrigin, request } = useMusicApi();
+  const { apiOrigin, mediaUrl } = useMusicApi();
   const query = useQuery(() => {
     const list = coverIds(ids());
     const scope = session.offlineScope;
     const offline = app.offline;
+    const authState = app.native && !offline ? (session.mediaAuth ? "authed" : "pending") : "";
     return {
-      key: connectionKey(coverKey(session.userId, list), offline),
-      enabled:
-        import.meta.client &&
-        Boolean(session.userId && list.length) &&
-        (offline ? Boolean(scope) : !session.refreshing),
+      key: connectionKey(coverKey(session.userId, list, authState), offline),
+      enabled: import.meta.client && Boolean(session.userId && list.length) && (!offline || Boolean(scope)),
       retry: 0,
       staleTime: 60 * 60 * 1000,
       query: async ({ signal }) => {
@@ -356,28 +368,30 @@ export function useCoverQuery(ids: () => readonly string[]) {
         const covers: Record<string, Blob | string> =
           scope && media ? await media.readOfflineCovers(scope, list) : {};
         signal.throwIfAborted();
-        const missing = list.filter((id) => !(id in covers));
         if (offline) {
           return covers;
         }
-        for (let index = 0; index < missing.length; index += 80) {
-          const { _data } = await request<MediaAuthorization>("/api/media/authorize", {
-            method: "POST",
-            body: { coverIds: missing.slice(index, index + 80) },
-            signal,
-          });
-          Object.assign(covers, _data?.covers);
-          if (scope && media) {
-            const addressed = Object.entries(_data?.covers ?? {});
-            void (async () => {
-              for (const [id, url] of addressed) {
-                if (signal.aborted) {
-                  break;
-                }
-                await media.cacheOfflineMedia(scope, "cover", id, url, signal, apiOrigin());
-              }
-            })();
+        const addressed: [string, string][] = [];
+        for (const id of list) {
+          if (id in covers) {
+            continue;
           }
+          const url = mediaUrl(id);
+          if (url) {
+            covers[id] = url;
+            addressed.push([id, url]);
+          }
+        }
+        if (scope && media && addressed.length) {
+          const origin = apiOrigin();
+          void (async () => {
+            for (const [id, url] of addressed) {
+              if (signal.aborted) {
+                break;
+              }
+              await media.cacheOfflineMedia(scope, "cover", id, url, signal, origin);
+            }
+          })();
         }
         return covers;
       },

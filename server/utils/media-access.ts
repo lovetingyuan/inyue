@@ -34,6 +34,10 @@ function payload(id: string, sessionId: string, expires: number) {
   return encoder.encode(JSON.stringify([id, sessionId, expires]));
 }
 
+function sessionPayload(sessionId: string, expires: number) {
+  return encoder.encode(JSON.stringify(["session", sessionId, expires]));
+}
+
 export async function signMedia(secret: string, id: string, sessionId: string, expires: number) {
   const signature = await crypto.subtle.sign(
     "HMAC",
@@ -58,6 +62,32 @@ export async function verifyMedia(
     await mediaKey(secret),
     Uint8Array.fromHex(signature),
     payload(id, sessionId, expires),
+  );
+}
+
+export async function signMediaSession(secret: string, sessionId: string, expires: number) {
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    await mediaKey(secret),
+    sessionPayload(sessionId, expires),
+  );
+  return new Uint8Array(signature).toHex();
+}
+
+export async function verifyMediaSession(
+  secret: string,
+  sessionId: string,
+  expires: number,
+  signature: string,
+) {
+  if (!/^[\da-f]{64}$/.test(signature) || !Number.isSafeInteger(expires) || expires <= Date.now()) {
+    return false;
+  }
+  return crypto.subtle.verify(
+    "HMAC",
+    await mediaKey(secret),
+    Uint8Array.fromHex(signature),
+    sessionPayload(sessionId, expires),
   );
 }
 
