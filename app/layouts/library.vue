@@ -2,15 +2,17 @@
 import { useSessionStore } from "~/stores/session";
 import { useAppStore } from "~/stores/app";
 import { useLibraryStore } from "~/stores/library";
+import { useUpdateStore } from "~/stores/update";
 import PlaylistNavigation from "~/components/PlaylistNavigation.vue";
 import AccountAvatar from "~/components/AccountAvatar.vue";
 import AccountSettingsDialog from "~/components/AccountSettingsDialog.vue";
+import AppUpdateDialog from "~/components/AppUpdateDialog.vue";
 import LibrarySearchInput from "~/components/LibrarySearchInput.vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, useTemplateRef, watch } from "vue";
 import { NuxtLink } from "#components";
 import { useRoute } from "#app";
-import { Menu, Plus, Search, X } from "@lucide/vue";
-import { onClickOutside, useMediaQuery } from "@vueuse/core";
+import { ArrowUpCircle, Download, Menu, Plus, Search, X } from "@lucide/vue";
+import { onClickOutside, useDocumentVisibility, useMediaQuery } from "@vueuse/core";
 import { storeToRefs } from "pinia";
 import PlaylistEditorDialog from "~/components/PlaylistEditorDialog.vue";
 import { usePlaylistQuery } from "~/composables/useLibraryQueries";
@@ -21,18 +23,27 @@ defineOptions({ name: "LibraryLayout" });
 const isDev = import.meta.dev;
 const app = useAppStore();
 const library = useLibraryStore();
+const update = useUpdateStore();
 const { drawerOpen, offline } = storeToRefs(app);
 const { search, term, searchOpen } = storeToRefs(library);
 const { account, userId } = storeToRefs(useSessionStore());
 usePlaylistQuery();
 const route = useRoute();
 const desktop = useMediaQuery("(min-width: 48rem)", { ssrWidth: 0 });
+const visibility = useDocumentVisibility();
+const updateBadgeLabel = computed(() => {
+  if (update.downloading) {
+    return update.downloadState.percent >= 0 ? `${update.downloadState.percent}%` : "下载中";
+  }
+  return "新版本";
+});
 const showMobileSearch = computed(() => route.path === "/");
 const mobileSearchExpanded = computed(
   () => showMobileSearch.value && (searchOpen.value || Boolean(search.value || term.value)),
 );
 const profile = useTemplateRef("profile");
 const playlistEditor = useTemplateRef("playlistEditor");
+const updateDialog = useTemplateRef("updateDialog");
 const drawerTrigger = useTemplateRef<HTMLButtonElement>("drawerTrigger");
 const drawerClose = useTemplateRef<HTMLButtonElement>("drawerClose");
 const searchTrigger = useTemplateRef<HTMLButtonElement>("searchTrigger");
@@ -79,6 +90,7 @@ onClickOutside(
 );
 
 onMounted(() => {
+  void update.init();
   if (!drawerRoot.value || !drawerSide.value || !drawerOverlay.value || !drawerAside.value) {
     return;
   }
@@ -139,6 +151,11 @@ watch(
   },
   { flush: "post" },
 );
+watch(visibility, (state) => {
+  if (state === "visible") {
+    void update.checkForUpdate();
+  }
+});
 watch(userId, () => profile.value?.close(), { flush: "sync" });
 </script>
 
@@ -180,6 +197,23 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
           <span class="text-xl font-bold tracking-tight">
             inYue <small v-if="isDev" class="text-xs font-medium text-base-content/65">dev</small>
           </span>
+          <button
+            v-if="update.hasUpdate"
+            type="button"
+            class="badge badge-primary badge-soft badge-sm shrink-0 cursor-pointer gap-1 border border-primary/25 font-medium hover:bg-primary/20"
+            :aria-label="`发现新版本 v${update.latestRelease?.version}，查看更新详情`"
+            aria-haspopup="dialog"
+            @click="updateDialog?.open()"
+          >
+            <Download
+              v-if="update.downloading"
+              class="size-3 shrink-0 animate-pulse"
+              :stroke-width="2"
+              aria-hidden="true"
+            />
+            <ArrowUpCircle v-else class="size-3 shrink-0" :stroke-width="2" aria-hidden="true" />
+            <span class="tabular-nums">{{ updateBadgeLabel }}</span>
+          </button>
           <span
             role="status"
             :class="offline ? 'badge badge-warning badge-sm shrink-0 font-semibold' : 'sr-only'"
@@ -240,17 +274,40 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
         @keydown.esc="drawerOpen = false"
       >
         <div class="flex shrink-0 items-center justify-between gap-2 px-4 py-3">
-          <NuxtLink
-            to="/"
-            class="flex min-h-10 items-center gap-2.5 rounded-field"
-            aria-label="inYue 曲库"
-            @click="drawerOpen = false"
-          >
-            <img src="/assets/icon/inyue.svg" width="36" height="36" class="shrink-0" alt="" />
-            <span class="text-xl font-bold tracking-tight">
-              inYue <small v-if="isDev" class="text-xs font-medium text-base-content/65">dev</small>
-            </span>
-          </NuxtLink>
+          <div class="flex min-w-0 items-center gap-2">
+            <NuxtLink
+              to="/"
+              class="flex min-h-10 items-center gap-2.5 rounded-field"
+              aria-label="inYue 曲库"
+              @click="drawerOpen = false"
+            >
+              <img src="/assets/icon/inyue.svg" width="36" height="36" class="shrink-0" alt="" />
+              <span class="text-xl font-bold tracking-tight">
+                inYue
+                <small v-if="isDev" class="text-xs font-medium text-base-content/65">dev</small>
+              </span>
+            </NuxtLink>
+            <button
+              v-if="update.hasUpdate"
+              type="button"
+              class="badge badge-primary badge-soft badge-sm shrink-0 cursor-pointer gap-1 border border-primary/25 font-medium hover:bg-primary/20"
+              :aria-label="`发现新版本 v${update.latestRelease?.version}，查看更新详情`"
+              aria-haspopup="dialog"
+              @click="
+                drawerOpen = false;
+                updateDialog?.open();
+              "
+            >
+              <Download
+                v-if="update.downloading"
+                class="size-3 shrink-0 animate-pulse"
+                :stroke-width="2"
+                aria-hidden="true"
+              />
+              <ArrowUpCircle v-else class="size-3 shrink-0" :stroke-width="2" aria-hidden="true" />
+              <span class="tabular-nums">{{ updateBadgeLabel }}</span>
+            </button>
+          </div>
           <span
             role="status"
             :class="offline ? 'badge badge-warning badge-sm shrink-0 font-semibold' : 'sr-only'"
@@ -294,5 +351,6 @@ watch(userId, () => profile.value?.close(), { flush: "sync" });
     </div>
     <PlaylistEditorDialog :key="userId" ref="playlistEditor" />
     <AccountSettingsDialog v-if="account" ref="profile" :account="account" />
+    <AppUpdateDialog ref="updateDialog" />
   </div>
 </template>

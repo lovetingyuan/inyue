@@ -65,7 +65,8 @@ export function useMusicApi() {
     const method = options?.method?.toUpperCase() ?? "GET";
     const isHealthProbe = path === "/api/health";
     const publicRequest =
-      (method === "GET" || method === "HEAD") && (path === "/api/auth-providers" || isHealthProbe);
+      (method === "GET" || method === "HEAD") &&
+      (path === "/api/auth-providers" || path === "/api/app-release" || isHealthProbe);
     const library = /^\/api\/(songs|playlists|integration)(\/|$)/.test(path);
     const hasOwner =
       (method === "GET" && /^\/api\/(songs|playlists)(\/|$)/.test(path)) ||

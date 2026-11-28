@@ -23,6 +23,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PlaybackProgressPlugin.class);
         registerPlugin(OfflineMediaPlugin.class);
         registerPlugin(NativeThemePlugin.class);
+        registerPlugin(AppUpdatePlugin.class);
         super.onCreate(savedInstanceState);
         configureWebView();
         applyTheme();

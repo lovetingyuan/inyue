@@ -2,6 +2,7 @@
 import { showMusicDialog } from "~/utils/music-dialog";
 import { useSessionStore } from "~/stores/session";
 import { useAppStore } from "~/stores/app";
+import { useUpdateStore } from "~/stores/update";
 import AccountAvatar from "~/components/AccountAvatar.vue";
 import AccountProfileDialog from "~/components/AccountProfileDialog.vue";
 import LogoutConfirmDialog from "~/components/LogoutConfirmDialog.vue";
@@ -12,7 +13,7 @@ import { usePreferredDark } from "@vueuse/core";
 import { Pencil, Share2 } from "@lucide/vue";
 import { storeToRefs } from "pinia";
 import type { AppTheme } from "~/types/native-theme";
-import { appName, officialSiteUrl } from "~~/shared/app-brand";
+import { appName, githubRepositoryUrl, officialSiteUrl } from "~~/shared/app-brand";
 import type { Account } from "~~/shared/types/library";
 
 defineOptions({ name: "AccountSettingsDialog" });
@@ -27,12 +28,12 @@ const themeOptions: readonly { value: AppTheme; label: string }[] = [
   { value: "light", label: "浅色" },
   { value: "dark", label: "深色" },
 ];
-const repositoryUrl = "https://github.com/lovetingyuan/inyue";
 const themeLabelId = useId();
 const themeGroupName = useId();
 
 const session = useSessionStore();
 const { theme, themeColor, offline, native } = storeToRefs(useAppStore());
+const { currentVersion } = storeToRefs(useUpdateStore());
 const prefersDark = usePreferredDark();
 const githubIcon = computed(() =>
   theme.value === "dark" || (theme.value === "system" && prefersDark.value)
@@ -288,11 +289,15 @@ defineExpose({
 
           <dl class="mt-2 text-sm">
             <div class="grid grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-2">
+              <dt class="font-medium text-base-content/70">版本</dt>
+              <dd class="tabular-nums">v{{ currentVersion }}</dd>
+            </div>
+            <div class="grid grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-2">
               <dt class="font-medium text-base-content/70">构建</dt>
               <dd class="flex items-center justify-between gap-2">
                 <span class="min-w-0 break-words">{{ buildLabel }}</span>
                 <a
-                  :href="repositoryUrl"
+                  :href="githubRepositoryUrl"
                   class="btn btn-ghost btn-square btn-sm shrink-0"
                   :target="native ? undefined : '_blank'"
                   :rel="native ? undefined : 'noopener noreferrer'"

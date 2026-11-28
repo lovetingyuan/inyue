@@ -8,6 +8,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineNuxtConfig } from "nuxt/config";
 import { addVitePlugin } from "nuxt/kit";
 import { vueVitePlugin } from "vite-plugin-dom-source";
+import packageJson from "./package.json";
 import webManifest from "./public/manifest.json";
 import { appDescription, appName, officialSiteUrl } from "./shared/app-brand";
 import { devPort } from "./shared/dev-server.mjs";
@@ -288,6 +289,7 @@ export default defineNuxtConfig({
     deepseekBaseUrl: "https://api.deepseek.com",
     deepseekModel: "deepseek-chat",
     public: {
+      appVersion: packageJson.version,
       sentryWebDsn: "",
       sentryAndroidDsn: "",
       sentryEnvironment: "",
