@@ -12,6 +12,10 @@ export default {
     : {}),
   loggingBehavior: "none",
   plugins: {
+    OtaKit: {
+      appId: "3e371105-8626-4805-9f6c-936751f755e5",
+      appReadyTimeout: 10000,
+    },
     SocialLogin: {
       providers: {
         google: true,

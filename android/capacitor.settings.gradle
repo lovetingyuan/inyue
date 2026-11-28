@@ -29,5 +29,8 @@ project(':capgo-capacitor-social-login').projectDir = new File('../node_modules/
 include ':dwbn-capacitor-plugin-playlist'
 project(':dwbn-capacitor-plugin-playlist').projectDir = new File('../node_modules/@dwbn/capacitor-plugin-playlist/android')
 
+include ':otakit-capacitor-updater'
+project(':otakit-capacitor-updater').projectDir = new File('../node_modules/@otakit/capacitor-updater/android')
+
 include ':sentry-capacitor'
 project(':sentry-capacitor').projectDir = new File('../node_modules/@sentry/capacitor/android')
