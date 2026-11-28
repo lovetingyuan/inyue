@@ -21,6 +21,6 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
 
-        assertEquals("com.tingyuan.inyue", appContext.getPackageName());
+        assertEquals("com.tingyuan.inyue.debug", appContext.getPackageName());
     }
 }

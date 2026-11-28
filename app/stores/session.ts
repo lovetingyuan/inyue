@@ -115,7 +115,10 @@ export const useSessionStore = defineStore("session", () => {
         if (
           offline &&
           accountQuery.data.value === undefined &&
-          (status === undefined || status === 502 || status === 503 || status === 504)
+          (status === 502 ||
+            status === 503 ||
+            status === 504 ||
+            (status === undefined && cause instanceof Error && cause.name === "FetchError"))
         ) {
           offlineState.value = offline.state?.revision === revokedScope ? undefined : offline.state;
           offlineReady.value = true;

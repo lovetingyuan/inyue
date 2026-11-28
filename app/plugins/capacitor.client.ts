@@ -98,9 +98,6 @@ export default defineNuxtPlugin((nuxtApp) => {
   }
 
   nuxtApp.hook("app:mounted", async () => {
-    void import("@otakit/capacitor-updater")
-      .then(({ OtaKit }) => OtaKit.notifyAppReady())
-      .catch(console.error);
     const splashPromise = import("@capacitor/splash-screen");
     await nextTick();
     await document

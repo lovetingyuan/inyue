@@ -192,7 +192,16 @@ async function installApp(adb, device, signal) {
   }
   run(adb, ["-s", device, "reverse", `tcp:${port}`, `tcp:${port}`]);
   // Start after forwarding and let the WebView render without blocking ADB.
-  run(adb, ["-s", device, "shell", "am", "start", "-S", "-n", "com.tingyuan.inyue/.MainActivity"]);
+  run(adb, [
+    "-s",
+    device,
+    "shell",
+    "am",
+    "start",
+    "-S",
+    "-n",
+    "com.tingyuan.inyue.debug/com.tingyuan.inyue.MainActivity",
+  ]);
 }
 
 function run(command, args, options) {

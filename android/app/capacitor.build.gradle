@@ -18,7 +18,6 @@ dependencies {
     implementation project(':capawesome-capacitor-clipboard')
     implementation project(':capgo-capacitor-social-login')
     implementation project(':dwbn-capacitor-plugin-playlist')
-    implementation project(':otakit-capacitor-updater')
     implementation project(':sentry-capacitor')
 
 }
